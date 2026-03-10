@@ -1,0 +1,36 @@
+# ─── Rust / Cargo ────────────────────────────────────────────────────
+/target/
+**/*.rs.bk
+
+# ─── Fuzz ────────────────────────────────────────────────────────────
+fuzz/artifacts/
+fuzz/corpus/
+
+# ─── Node / TypeScript SDK ──────────────────────────────────────────
+sdks/typescript/node_modules/
+sdks/typescript/dist/
+
+# ─── Python SDK ─────────────────────────────────────────────────────
+sdks/python/__pycache__/
+sdks/python/*.egg-info/
+sdks/python/dist/
+sdks/python/build/
+*.pyc
+
+# ─── IDE / Editor ───────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ─── Docker / Secrets ───────────────────────────────────────────────
+secrets/
+
+# ─── Coverage / Profiling ───────────────────────────────────────────
+*.profraw
+*.profdata
+cobertura.xml
+tarpaulin-report.html
+lcov.info

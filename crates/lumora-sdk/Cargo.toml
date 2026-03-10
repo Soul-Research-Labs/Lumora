@@ -1,0 +1,26 @@
+[package]
+name = "lumora-sdk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "High-level SDK for interacting with the Lumora privacy coprocessor"
+
+[dependencies]
+lumora-primitives = { workspace = true }
+lumora-note = { workspace = true }
+lumora-tree = { workspace = true }
+lumora-prover = { workspace = true }
+lumora-verifier = { workspace = true }
+lumora-contracts = { workspace = true }
+lumora-node = { workspace = true }
+lumora-client = { workspace = true }
+pasta_curves = { workspace = true }
+ff = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+serde_json = "1"
+hex = "0.4"
+
+[[example]]
+name = "e2e"
+path = "examples/e2e.rs"

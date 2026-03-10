@@ -1,0 +1,32 @@
+{
+  "name": "@lumora/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript client SDK for the Lumora privacy coprocessor RPC API",
+  "main": "dist/lumora.js",
+  "types": "dist/lumora.d.ts",
+  "files": [
+    "dist"
+  ],
+  "license": "MIT OR Apache-2.0",
+  "keywords": [
+    "lumora",
+    "privacy",
+    "zk",
+    "halo2",
+    "bitcoin",
+    "rollup"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lumora/lumora",
+    "directory": "sdks/typescript"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test dist/lumora.test.js"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.5",
+    "typescript": "^5.0.0"
+  }
+}

@@ -1,0 +1,21 @@
+[package]
+name = "lumora-client"
+description = "Client wallet, key management, and note tracking for Lumora"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lumora-primitives = { workspace = true }
+lumora-note = { workspace = true }
+lumora-tree = { workspace = true }
+lumora-prover = { workspace = true }
+lumora-node = { workspace = true }
+pasta_curves = { workspace = true }
+ff = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+serde_json = "1"
+aes-gcm = { workspace = true }
+argon2 = { workspace = true }
+zeroize = { workspace = true }

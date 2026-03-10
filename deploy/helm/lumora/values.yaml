@@ -1,0 +1,95 @@
+# Default values for the Lumora Helm chart.
+
+replicaCount: 1
+
+image:
+  repository: lumora/lumora
+  pullPolicy: IfNotPresent
+  tag: "" # Defaults to Chart.appVersion
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+securityContext:
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 3030
+
+resources:
+  limits:
+    memory: 4Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+
+persistence:
+  enabled: true
+  accessMode: ReadWriteOnce
+  size: 10Gi
+  storageClass: ""
+  # existingClaim: ""
+
+env:
+  RUST_LOG: info
+  LUMORA_RPC_ADDR: "0.0.0.0:3030"
+
+# API key for RPC authentication.
+# Set via --set apiKey=... or use existingSecret.
+apiKey: ""
+existingSecret: ""
+existingSecretKey: "api-key"
+
+probes:
+  liveness:
+    path: /health
+    port: 3030
+    initialDelaySeconds: 10
+    periodSeconds: 30
+  readiness:
+    path: /health
+    port: 3030
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+metrics:
+  enabled: false
+  port: 9090
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    labels: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: lumora.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

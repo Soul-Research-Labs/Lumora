@@ -1,0 +1,33 @@
+[package]
+name = "lumora-contracts"
+description = "PrivacyPool state machine, rollup bridge, and contract logic for Lumora"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lumora-primitives = { workspace = true }
+lumora-note = { workspace = true }
+lumora-tree = { workspace = true }
+lumora-circuits = { workspace = true }
+lumora-prover = { workspace = true }
+lumora-verifier = { workspace = true }
+halo2_proofs = { workspace = true }
+pasta_curves.workspace = true
+ff.workspace = true
+rand.workspace = true
+serde = { workspace = true }
+serde_json = "1"
+hex = "0.4"
+bincode = { workspace = true }
+subtle = "2"
+hmac = { workspace = true }
+sha2 = { workspace = true }
+
+[dev-dependencies]
+rand.workspace = true
+criterion = { workspace = true }
+
+[[bench]]
+name = "contract_bench"
+harness = false

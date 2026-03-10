@@ -1,0 +1,21 @@
+[package]
+name = "lumora-tree"
+description = "Incremental Merkle tree with Poseidon hash for LUMORA note commitment storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lumora-primitives = { workspace = true }
+pasta_curves = { workspace = true }
+ff = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+rand = { workspace = true }
+criterion = { workspace = true }
+proptest = { workspace = true }
+
+[[bench]]
+name = "tree_bench"
+harness = false

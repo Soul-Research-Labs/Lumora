@@ -1,0 +1,241 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  check:
+    name: Check & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Build
+        run: cargo build --workspace
+
+      - name: Documentation
+        run: cargo doc --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+
+  test:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Unit tests
+        run: cargo test --workspace --lib
+
+      - name: Doc tests
+        run: cargo test --workspace --doc
+
+      - name: Integration tests
+        run: cargo test --workspace --test '*'
+
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin --locked
+
+      - name: Generate coverage
+        run: cargo tarpaulin --workspace --out xml --skip-clean --timeout 600
+
+      - name: Upload to Codecov
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: codecov/codecov-action@v4
+        with:
+          files: cobertura.xml
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  deny:
+    name: Supply Chain Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+
+  audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  msrv:
+    name: Minimum Supported Rust Version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.75"
+      - uses: Swatinem/rust-cache@v2
+      - name: Check MSRV
+        run: cargo check --workspace
+
+  typescript-sdk:
+    name: TypeScript SDK Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install & Build
+        working-directory: sdks/typescript
+        run: npm ci && npm run build
+      - name: Test
+        working-directory: sdks/typescript
+        run: npm test
+
+  python-sdk:
+    name: Python SDK Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        working-directory: sdks/python
+        run: pip install pytest
+      - name: Test
+        working-directory: sdks/python
+        run: python -m pytest tests/ -v
+
+  slow-tests:
+    name: Slow Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Integration tests (proof-heavy)
+        run: cargo test --workspace --test '*' -- --test-threads=1
+
+  bench-check:
+    name: Benchmark Compilation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Compile benchmarks
+        run: cargo bench --workspace --no-run
+
+  fuzz:
+    name: Fuzz Smoke Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Fuzz field_hex_parse (60s)
+        run: cargo +nightly fuzz run fuzz_field_hex_parse -- -max_total_time=60
+        working-directory: .
+
+      - name: Fuzz wal_entry (60s)
+        run: cargo +nightly fuzz run fuzz_wal_entry -- -max_total_time=60
+        working-directory: .
+
+      - name: Fuzz envelope_seal_open (60s)
+        run: cargo +nightly fuzz run fuzz_envelope_seal_open -- -max_total_time=60
+        working-directory: .
+
+      - name: Fuzz transfer_json (60s)
+        run: cargo +nightly fuzz run fuzz_transfer_json -- -max_total_time=60
+        working-directory: .
+
+      - name: Fuzz pedersen_commit (60s)
+        run: cargo +nightly fuzz run fuzz_pedersen_commit -- -max_total_time=60
+        working-directory: .
+
+      - name: Fuzz poseidon_merkle (60s)
+        run: cargo +nightly fuzz run fuzz_poseidon_merkle -- -max_total_time=60
+        working-directory: .
+
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t lumora:ci .
+
+      - name: Smoke test container
+        run: |
+          docker run --rm -d --name lumora-smoke -p 3030:3030 lumora:ci
+          sleep 3
+          curl -sf http://localhost:3030/health || (docker logs lumora-smoke && exit 1)
+          docker stop lumora-smoke
+
+  bench-compare:
+    name: Benchmark Regression Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run benchmarks on PR branch
+        run: cargo bench --workspace -- --save-baseline pr
+
+      - name: Checkout base branch
+        run: git checkout ${{ github.event.pull_request.base.sha }}
+
+      - name: Run benchmarks on base branch
+        run: cargo bench --workspace -- --save-baseline base
+
+      - name: Compare benchmarks
+        run: |
+          cargo install critcmp --locked 2>/dev/null || true
+          critcmp base pr --threshold 15 || {
+            echo "::error::Benchmark regression exceeds 15% threshold"
+            exit 1
+          }

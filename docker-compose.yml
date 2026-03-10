@@ -1,0 +1,43 @@
+# Lumora development / single-node deployment
+# Usage:  docker compose up -d
+# Logs:   docker compose logs -f lumora
+
+services:
+  lumora:
+    build: .
+    container_name: lumora
+    restart: unless-stopped
+    ports:
+      - "3030:3030"
+    volumes:
+      - lumora-data:/data
+    environment:
+      RUST_LOG: info
+      LUMORA_RPC_ADDR: "0.0.0.0:3030"
+      # Optional: set an API key to protect endpoints.
+      # LUMORA_API_KEY: "change-me"
+      # Prefer Docker secrets for production (see below).
+    secrets:
+      - lumora_api_key
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+          cpus: "2"
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /tmp
+
+# Docker secrets for production API key management.
+# Create the secret: echo "your-strong-api-key" | docker secret create lumora_api_key -
+# Or for local compose: echo "your-strong-api-key" > ./secrets/api_key.txt
+secrets:
+  lumora_api_key:
+    file: ./secrets/api_key.txt
+
+volumes:
+  lumora-data:

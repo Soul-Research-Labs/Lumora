@@ -1,0 +1,45 @@
+# CODEOWNERS — GitHub will request reviews from matching owners.
+
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default — catch-all
+
+-                           @lumora/core
+
+# Cryptographic circuits & proofs
+
+crates/lumora-circuits/ @lumora/crypto
+crates/lumora-prover/ @lumora/crypto
+crates/lumora-verifier/ @lumora/crypto
+
+# On-chain state & contracts
+
+crates/lumora-contracts/ @lumora/contracts
+crates/lumora-primitives/ @lumora/contracts
+
+# Tree & note store
+
+crates/lumora-tree/ @lumora/core
+crates/lumora-note/ @lumora/core
+
+# Node & RPC server
+
+crates/lumora-node/ @lumora/infra
+crates/lumora-rpc/ @lumora/infra
+
+# SDKs
+
+sdks/typescript/ @lumora/sdk
+sdks/python/ @lumora/sdk
+
+# CI / Ops
+
+.github/ @lumora/infra
+deploy/ @lumora/infra
+Dockerfile @lumora/infra
+docker-compose.yml @lumora/infra
+
+# Security-sensitive files
+
+SECURITY.md @lumora/security
+deny.toml @lumora/security

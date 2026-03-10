@@ -1,0 +1,13 @@
+apiVersion: v2
+name: lumora
+description: A Helm chart for the Lumora privacy pool node
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - privacy
+  - zk-proofs
+  - halo2
+  - lumora
+maintainers:
+  - name: Lumora Team

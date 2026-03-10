@@ -1,0 +1,34 @@
+[package]
+name = "lumora-note"
+description = "UTXO-note model: Note, Commitment, and Nullifier types for LUMORA"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lumora-primitives = { workspace = true }
+pasta_curves = { workspace = true }
+ff = { workspace = true }
+group = { workspace = true }
+rand = { workspace = true }
+rand_core = { workspace = true }
+serde = { workspace = true }
+zeroize = { workspace = true }
+subtle = "2"
+bip39 = { workspace = true, optional = true }
+chacha20poly1305 = { workspace = true }
+sha2 = { workspace = true }
+
+[features]
+default = ["mnemonic"]
+mnemonic = ["bip39"]
+
+[dev-dependencies]
+rand = { workspace = true }
+proptest = { workspace = true }
+serde_json = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "encryption_bench"
+harness = false

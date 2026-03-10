@@ -1,0 +1,92 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/lumora-primitives",
+    "crates/lumora-note",
+    "crates/lumora-tree",
+    "crates/lumora-circuits",
+    "crates/lumora-prover",
+    "crates/lumora-verifier",
+    "crates/lumora-contracts",
+    "crates/lumora-node",
+    "crates/lumora-client",
+    "crates/lumora-sdk",
+    "crates/lumora-cli",
+    "crates/lumora-rpc",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/lumora/lumora"
+
+[workspace.dependencies]
+# ZK proving system (zcash halo2 — Pallas/Vesta native)
+halo2_proofs = { version = "0.3", features = ["batch"] }
+halo2_gadgets = "0.3"
+
+# Curve arithmetic — Pallas/Vesta (native to Halo2)
+pasta_curves = "0.5"
+ff = "0.13"
+group = "0.13"
+
+# Randomness
+rand = "0.8"
+rand_core = "0.6"
+
+# Hashing
+blake2b_simd = "1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+bincode = "1"
+
+# Testing / bench
+criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1"
+
+# Internal crates
+lumora-primitives = { path = "crates/lumora-primitives" }
+lumora-note = { path = "crates/lumora-note" }
+lumora-tree = { path = "crates/lumora-tree" }
+lumora-circuits = { path = "crates/lumora-circuits" }
+lumora-prover = { path = "crates/lumora-prover" }
+lumora-verifier = { path = "crates/lumora-verifier" }
+lumora-contracts = { path = "crates/lumora-contracts" }
+lumora-node = { path = "crates/lumora-node" }
+lumora-sdk = { path = "crates/lumora-sdk" }
+lumora-client = { path = "crates/lumora-client" }
+
+# Security
+zeroize = { version = "1", features = ["derive"] }
+bip39 = "2"
+aes-gcm = "0.10"
+argon2 = "0.5"
+chacha20poly1305 = "0.10"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+hex = "0.4"
+
+# Networking
+tokio = { version = "1", features = ["full"] }
+axum = "0.8"
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# Integrity / hashing
+hmac = "0.12"
+sha2 = "0.10"
+
+# CLI UX
+rpassword = "5"
+
+# Observability
+metrics = "0.24"
+metrics-exporter-prometheus = "0.16"
+
+# Parallelism
+rayon = "1"

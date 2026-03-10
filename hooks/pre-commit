@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Pre-commit hook for the Lumora workspace.
+# Install: cp hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+set -e
+
+echo "==> Running cargo fmt check..."
+cargo fmt --all -- --check
+
+echo "==> Running cargo clippy..."
+cargo clippy --workspace --all-targets -- -D warnings
+
+echo "==> Running tests (lib only for speed)..."
+cargo test --workspace --lib -- --test-threads=2
+
+echo "==> Pre-commit checks passed."

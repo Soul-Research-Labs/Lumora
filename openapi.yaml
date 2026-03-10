@@ -1,0 +1,656 @@
+openapi: "3.1.0"
+info:
+  title: Lumora Privacy Coprocessor API
+  version: "0.1.0"
+  description: |
+    HTTP JSON-RPC API for the Lumora privacy coprocessor.  
+    All authenticated endpoints require the `X-API-Key` header when the
+    `LUMORA_API_KEY` environment variable is set on the server.
+  license:
+    name: MIT OR Apache-2.0
+
+servers:
+  - url: http://127.0.0.1:3030
+    description: Local development server
+
+# ── Paths ─────────────────────────────────────────────────────────────
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: health
+      tags: [Operations]
+      security: []
+      responses:
+        "200":
+          description: Server is healthy
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ok
+
+  /v1/status:
+    get:
+      summary: Pool status
+      operationId: status
+      tags: [Read]
+      responses:
+        "200":
+          description: Current pool state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResp"
+
+  /v1/fees:
+    get:
+      summary: Fee estimates
+      operationId: feeEstimate
+      tags: [Read]
+      responses:
+        "200":
+          description: Current fee estimates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeeEstimateResp"
+
+  /v1/epoch-roots:
+    get:
+      summary: Finalized epoch Merkle roots
+      operationId: epochRoots
+      tags: [Read]
+      responses:
+        "200":
+          description: All finalized nullifier-epoch roots
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EpochRootsResp"
+
+  /v1/deposit:
+    post:
+      summary: Deposit funds into the privacy pool
+      operationId: deposit
+      tags: [Write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepositReq"
+      responses:
+        "200":
+          description: Deposit accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DepositResp"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /v1/transfer:
+    post:
+      summary: Submit a private transfer proof
+      operationId: transfer
+      tags: [Write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferReq"
+      responses:
+        "200":
+          description: Transfer accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferResp"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/ContractError"
+
+  /v1/withdraw:
+    post:
+      summary: Withdraw funds from the privacy pool
+      operationId: withdraw
+      tags: [Write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WithdrawReq"
+      responses:
+        "200":
+          description: Withdrawal accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WithdrawResp"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/ContractError"
+
+  /v1/nullifier:
+    post:
+      summary: Check if a nullifier has been spent
+      operationId: nullifierCheck
+      tags: [Read]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NullifierReq"
+      responses:
+        "200":
+          description: Nullifier status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NullifierResp"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /v1/notes:
+    post:
+      summary: Fetch encrypted notes by recipient tag
+      operationId: getNotes
+      tags: [Notes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GetNotesReq"
+      responses:
+        "200":
+          description: Encrypted notes for the given tag
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EncryptedNoteResp"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /v1/relay-note:
+    post:
+      summary: Store an encrypted note for a recipient
+      operationId: relayNote
+      tags: [Notes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RelayNoteReq"
+      responses:
+        "201":
+          description: Note stored
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /v1/history:
+    post:
+      summary: Paginated event history
+      operationId: history
+      tags: [Read]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HistoryReq"
+      responses:
+        "200":
+          description: Event history page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoryResp"
+
+  /v1/batch-verify:
+    post:
+      summary: Batch verify transfer proofs
+      operationId: batchVerify
+      tags: [Write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchVerifyReq"
+      responses:
+        "200":
+          description: Batch verification result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchVerifyResp"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /v1/stealth-scan:
+    post:
+      summary: Fetch notes for stealth address scanning
+      operationId: stealthScan
+      tags: [Notes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StealthScanReq"
+      responses:
+        "200":
+          description: Encrypted notes for client-side scanning
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StealthScanResp"
+
+  /v1/sync/status:
+    get:
+      summary: Node sync status
+      operationId: syncStatus
+      tags: [Sync]
+      responses:
+        "200":
+          description: Sync status
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /v1/sync/events:
+    post:
+      summary: Fetch sync events
+      operationId: syncEvents
+      tags: [Sync]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Sync events
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      operationId: metrics
+      tags: [Operations]
+      security: []
+      responses:
+        "200":
+          description: Prometheus text metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+
+# ── Components ────────────────────────────────────────────────────────
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResp"
+    ContractError:
+      description: Contract execution error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResp"
+
+  schemas:
+    # ── Requests ────────────────────────────────────────────────────
+
+    DepositReq:
+      type: object
+      required: [commitment, amount]
+      properties:
+        commitment:
+          type: string
+          description: Hex-encoded note commitment (32-byte field element)
+        amount:
+          type: integer
+          format: uint64
+          description: Amount to deposit (in base units)
+        asset:
+          type: integer
+          format: uint64
+          default: 0
+          description: "Asset identifier (0 = native token)"
+
+    TransferReq:
+      type: object
+      required: [proof, merkle_root, nullifiers, output_commitments]
+      properties:
+        proof:
+          type: string
+          description: Hex-encoded proof bytes
+        merkle_root:
+          type: string
+          description: Hex-encoded Merkle root
+        nullifiers:
+          type: array
+          items:
+            type: string
+          minItems: 2
+          maxItems: 2
+          description: Hex-encoded nullifiers (exactly 2)
+        output_commitments:
+          type: array
+          items:
+            type: string
+          minItems: 2
+          maxItems: 2
+          description: Hex-encoded output commitments (exactly 2)
+        domain_chain_id:
+          type: integer
+          format: uint64
+          description: Optional domain chain ID for V2 domain-separated nullifiers
+        domain_app_id:
+          type: integer
+          format: uint64
+          description: Optional domain application ID for V2 domain-separated nullifiers
+
+    WithdrawReq:
+      type: object
+      required:
+        [proof, merkle_root, nullifiers, output_commitments, amount, recipient]
+      properties:
+        proof:
+          type: string
+          description: Hex-encoded proof bytes
+        merkle_root:
+          type: string
+          description: Hex-encoded Merkle root
+        nullifiers:
+          type: array
+          items:
+            type: string
+          minItems: 2
+          maxItems: 2
+        output_commitments:
+          type: array
+          items:
+            type: string
+          minItems: 2
+          maxItems: 2
+        amount:
+          type: integer
+          format: uint64
+        recipient:
+          type: string
+          description: Hex-encoded 32-byte recipient address
+        asset:
+          type: integer
+          format: uint64
+          default: 0
+        domain_chain_id:
+          type: integer
+          format: uint64
+        domain_app_id:
+          type: integer
+          format: uint64
+
+    NullifierReq:
+      type: object
+      required: [nullifier]
+      properties:
+        nullifier:
+          type: string
+          description: Hex-encoded nullifier to check
+
+    GetNotesReq:
+      type: object
+      required: [recipient_tag]
+      properties:
+        recipient_tag:
+          type: string
+          description: Hex-encoded 32-byte recipient tag
+
+    RelayNoteReq:
+      type: object
+      required:
+        [recipient_tag, leaf_index, commitment, ciphertext, ephemeral_pubkey]
+      properties:
+        recipient_tag:
+          type: string
+        leaf_index:
+          type: integer
+          format: uint64
+        commitment:
+          type: string
+        ciphertext:
+          type: string
+        ephemeral_pubkey:
+          type: string
+
+    HistoryReq:
+      type: object
+      properties:
+        offset:
+          type: integer
+          format: uint64
+          default: 0
+        limit:
+          type: integer
+          format: uint64
+          default: 100
+
+    BatchVerifyReq:
+      type: object
+      required: [proofs]
+      properties:
+        proofs:
+          type: array
+          items:
+            $ref: "#/components/schemas/BatchVerifyItem"
+          maxItems: 64
+
+    BatchVerifyItem:
+      type: object
+      required: [proof, merkle_root, nullifiers, output_commitments]
+      properties:
+        proof:
+          type: string
+        merkle_root:
+          type: string
+        nullifiers:
+          type: array
+          items:
+            type: string
+          minItems: 2
+          maxItems: 2
+        output_commitments:
+          type: array
+          items:
+            type: string
+          minItems: 2
+          maxItems: 2
+
+    StealthScanReq:
+      type: object
+      properties:
+        from_leaf_index:
+          type: integer
+          format: uint64
+          default: 0
+          description: Minimum leaf index to start scanning from (inclusive)
+        limit:
+          type: integer
+          default: 1000
+          description: Maximum number of notes to return
+
+    # ── Responses ───────────────────────────────────────────────────
+
+    DepositResp:
+      type: object
+      properties:
+        leaf_index:
+          type: integer
+          format: uint64
+        new_root:
+          type: string
+
+    TransferResp:
+      type: object
+      properties:
+        leaf_indices:
+          type: array
+          items:
+            type: integer
+            format: uint64
+          minItems: 2
+          maxItems: 2
+        new_root:
+          type: string
+
+    WithdrawResp:
+      type: object
+      properties:
+        change_leaf_indices:
+          type: array
+          items:
+            type: integer
+            format: uint64
+          minItems: 2
+          maxItems: 2
+        new_root:
+          type: string
+        amount:
+          type: integer
+          format: uint64
+
+    StatusResp:
+      type: object
+      properties:
+        pool_balance:
+          type: integer
+          format: uint64
+        commitment_count:
+          type: integer
+          format: uint64
+        merkle_root:
+          type: string
+        circuit_version:
+          type: string
+
+    NullifierResp:
+      type: object
+      properties:
+        spent:
+          type: boolean
+
+    EncryptedNoteResp:
+      type: object
+      properties:
+        leaf_index:
+          type: integer
+          format: uint64
+        commitment:
+          type: string
+        ciphertext:
+          type: string
+        ephemeral_pubkey:
+          type: string
+
+    FeeEstimateResp:
+      type: object
+      properties:
+        transfer_fee:
+          type: integer
+          format: uint64
+        withdraw_fee:
+          type: integer
+          format: uint64
+        min_deposit:
+          type: integer
+          format: uint64
+        min_withdraw:
+          type: integer
+          format: uint64
+
+    HistoryResp:
+      type: object
+      properties:
+        total:
+          type: integer
+          format: uint64
+        events:
+          type: array
+          items:
+            type: object
+
+    BatchVerifyResp:
+      type: object
+      properties:
+        all_valid:
+          type: boolean
+        count:
+          type: integer
+
+    EpochRootEntry:
+      type: object
+      properties:
+        epoch_id:
+          type: integer
+          format: uint64
+        root:
+          type: string
+
+    EpochRootsResp:
+      type: object
+      properties:
+        current_epoch:
+          type: integer
+          format: uint64
+        roots:
+          type: array
+          items:
+            $ref: "#/components/schemas/EpochRootEntry"
+
+    StealthScanResp:
+      type: object
+      properties:
+        notes:
+          type: array
+          items:
+            $ref: "#/components/schemas/EncryptedNoteResp"
+        count:
+          type: integer
+
+    ErrorResp:
+      type: object
+      properties:
+        error:
+          type: string
+
+security:
+  - ApiKeyAuth: []
