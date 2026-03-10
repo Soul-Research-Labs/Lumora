@@ -41,7 +41,7 @@ blake2b_simd = "1"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
-bincode = "1"
+bincode = "3"
 
 # Testing / bench
 criterion = { version = "0.5", features = ["html_reports"] }
