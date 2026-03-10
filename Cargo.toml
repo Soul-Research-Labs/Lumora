@@ -25,7 +25,7 @@ repository = "https://github.com/lumora/lumora"
 [workspace.dependencies]
 # ZK proving system (zcash halo2 — Pallas/Vesta native)
 halo2_proofs = { version = "0.3", features = ["batch"] }
-halo2_gadgets = "0.3"
+halo2_gadgets = "0.4"
 
 # Curve arithmetic — Pallas/Vesta (native to Halo2)
 pasta_curves = "0.5"
