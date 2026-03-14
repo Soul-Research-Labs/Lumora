@@ -30,6 +30,7 @@
 //! - [`operator`] — Operator daemon logic
 //! - [`challenger`] — Challenger monitoring and response
 //! - [`config`] — Configuration types
+//! - [`adapters`] — Bridge adapters for Bitcoin L2s, sidechains, and protocols
 
 pub mod config;
 pub mod trace;
@@ -41,3 +42,4 @@ pub mod bridge;
 pub mod verifier;
 pub mod operator;
 pub mod challenger;
+pub mod adapters;
