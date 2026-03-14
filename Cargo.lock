@@ -1255,7 +1255,7 @@ dependencies = [
  "lumora-tree",
  "lumora-verifier",
  "pasta_curves",
- "rand 0.8.5",
+ "rand 0.9.2",
  "serde",
  "serde_json",
  "sha2",
@@ -1277,7 +1277,7 @@ dependencies = [
  "lumora-primitives",
  "lumora-tree",
  "pasta_curves",
- "rand 0.8.5",
+ "rand 0.9.2",
  "rand_core 0.6.4",
  "serde",
 ]
@@ -1295,7 +1295,7 @@ dependencies = [
  "lumora-note",
  "lumora-sdk",
  "pasta_curves",
- "rand 0.8.5",
+ "rand 0.9.2",
  "rpassword",
 ]
 
@@ -1312,7 +1312,7 @@ dependencies = [
  "lumora-prover",
  "lumora-tree",
  "pasta_curves",
- "rand 0.8.5",
+ "rand 0.9.2",
  "serde",
  "serde_json",
  "zeroize",
@@ -1335,7 +1335,7 @@ dependencies = [
  "lumora-tree",
  "lumora-verifier",
  "pasta_curves",
- "rand 0.8.5",
+ "rand 0.9.2",
  "serde",
  "serde_json",
  "sha2",
@@ -1358,7 +1358,7 @@ dependencies = [
  "lumora-tree",
  "lumora-verifier",
  "pasta_curves",
- "rand 0.8.5",
+ "rand 0.9.2",
  "serde",
  "serde_json",
  "sha2",
@@ -1376,7 +1376,7 @@ dependencies = [
  "lumora-primitives",
  "pasta_curves",
  "proptest",
- "rand 0.8.5",
+ "rand 0.9.2",
  "rand_core 0.6.4",
  "serde",
  "serde_json",
@@ -1395,7 +1395,7 @@ dependencies = [
  "halo2_proofs",
  "pasta_curves",
  "proptest",
- "rand 0.8.5",
+ "rand 0.9.2",
  "rand_core 0.6.4",
  "serde",
 ]
@@ -1413,7 +1413,7 @@ dependencies = [
  "lumora-primitives",
  "lumora-tree",
  "pasta_curves",
- "rand 0.8.5",
+ "rand 0.9.2",
  "rand_core 0.6.4",
  "rayon",
  "tokio",
@@ -1438,7 +1438,7 @@ dependencies = [
  "metrics",
  "metrics-exporter-prometheus",
  "pasta_curves",
- "rand 0.8.5",
+ "rand 0.9.2",
  "serde",
  "serde_json",
  "subtle",
@@ -1465,7 +1465,7 @@ dependencies = [
  "lumora-tree",
  "lumora-verifier",
  "pasta_curves",
- "rand 0.8.5",
+ "rand 0.9.2",
  "serde",
  "serde_json",
 ]
@@ -1479,7 +1479,7 @@ dependencies = [
  "lumora-primitives",
  "pasta_curves",
  "proptest",
- "rand 0.8.5",
+ "rand 0.9.2",
  "serde",
 ]
 
@@ -1497,7 +1497,7 @@ dependencies = [
  "lumora-prover",
  "lumora-tree",
  "pasta_curves",
- "rand 0.8.5",
+ "rand 0.9.2",
 ]
 
 [[package]]
