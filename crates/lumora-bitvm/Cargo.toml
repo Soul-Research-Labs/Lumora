@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 lumora-primitives = { workspace = true }
+lumora-circuits = { workspace = true }
 lumora-prover = { workspace = true }
 lumora-verifier = { workspace = true }
 lumora-contracts = { workspace = true }
@@ -21,3 +22,5 @@ hex = { workspace = true }
 
 [dev-dependencies]
 rand = { workspace = true }
+lumora-note = { workspace = true }
+lumora-tree = { workspace = true }
