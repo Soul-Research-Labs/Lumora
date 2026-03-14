@@ -208,6 +208,90 @@ impl Operator {
 }
 
 // ---------------------------------------------------------------------------
+// Async daemon wrapper
+// ---------------------------------------------------------------------------
+
+/// Async operator daemon that polls for pending withdrawals and processes them.
+///
+/// Wraps the synchronous [`Operator`] and exposes a `run()` loop that can be
+/// driven by a tokio runtime. The loop checks for finalized assertions each
+/// tick and returns shutdown-safe state.
+pub struct OperatorDaemon {
+    operator: Operator,
+    poll_interval: std::time::Duration,
+}
+
+impl OperatorDaemon {
+    /// Create a new operator daemon.
+    pub fn new(operator: Operator) -> Self {
+        Self {
+            operator,
+            poll_interval: std::time::Duration::from_secs(30),
+        }
+    }
+
+    /// Set the polling interval for the main loop.
+    pub fn with_poll_interval(mut self, interval: std::time::Duration) -> Self {
+        self.poll_interval = interval;
+        self
+    }
+
+    /// Access the inner operator.
+    pub fn operator(&self) -> &Operator {
+        &self.operator
+    }
+
+    /// Mutable access to the inner operator.
+    pub fn operator_mut(&mut self) -> &mut Operator {
+        &mut self.operator
+    }
+
+    /// Run a single tick of the daemon loop:
+    /// 1. Finalize any expired assertions
+    /// 2. Return the finalized IDs and their timeout TX params
+    ///
+    /// In production, the caller would broadcast the Timeout TXs.
+    pub fn tick(
+        &mut self,
+        current_height: u64,
+    ) -> Vec<(AssertionId, crate::transactions::TimeoutTxParams)> {
+        self.operator.finalize_expired(current_height)
+    }
+
+    /// Run the daemon loop until the cancellation token fires.
+    ///
+    /// `get_height` is called each tick to fetch the current Bitcoin height.
+    /// `on_finalized` is called for each newly finalized assertion.
+    pub async fn run<F, G>(
+        &mut self,
+        mut get_height: F,
+        mut on_finalized: G,
+        cancel: tokio::sync::watch::Receiver<bool>,
+    ) where
+        F: FnMut() -> u64,
+        G: FnMut(AssertionId, crate::transactions::TimeoutTxParams),
+    {
+        tracing::info!(
+            poll_interval_secs = self.poll_interval.as_secs(),
+            "operator daemon started"
+        );
+        loop {
+            if *cancel.borrow() {
+                tracing::info!("operator daemon shutting down");
+                break;
+            }
+            let height = get_height();
+            let finalized = self.tick(height);
+            for (id, params) in finalized {
+                tracing::info!(?id, "assertion finalized, broadcasting timeout TX");
+                on_finalized(id, params);
+            }
+            tokio::time::sleep(self.poll_interval).await;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 

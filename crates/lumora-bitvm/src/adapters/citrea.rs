@@ -5,9 +5,6 @@
 //! This adapter communicates with Citrea's JSON-RPC endpoint for deposits,
 //! withdrawals, state root commitments, and proof status queries.
 
-use std::cell::Cell;
-
-use ff::PrimeField;
 use pasta_curves::pallas;
 use serde::{Deserialize, Serialize};
 
@@ -16,7 +13,7 @@ use lumora_contracts::bridge::{
 };
 use lumora_contracts::rollup::{JsonRpcRequest, OfflineTransport, OnChainVerifier, RpcTransport};
 
-use super::{field_to_hex, hex_to_field, sha256};
+use super::{bridge_boilerplate, field_to_hex, hex_to_field, parse_remote_nullifier_roots, sha256};
 
 // ─── Configuration ──────────────────────────────────────────────────────
 
@@ -112,68 +109,9 @@ pub struct SequencerCommitment {
 ///
 /// Communicates with the Citrea sequencer via JSON-RPC. Generic over
 /// [`RpcTransport`] for pluggable HTTP clients.
-pub struct CitreaBridge<T: RpcTransport = OfflineTransport> {
-    config: CitreaConfig,
-    transport: T,
-    next_id: Cell<u64>,
-}
-
-impl CitreaBridge<OfflineTransport> {
-    /// Create a bridge with the default offline transport (for testing).
-    pub fn new(config: CitreaConfig) -> Self {
-        Self {
-            config,
-            transport: OfflineTransport,
-            next_id: Cell::new(1),
-        }
-    }
-}
+bridge_boilerplate!(CitreaBridge, CitreaConfig);
 
 impl<T: RpcTransport> CitreaBridge<T> {
-    /// Create a bridge with a custom RPC transport.
-    pub fn with_transport(config: CitreaConfig, transport: T) -> Self {
-        Self {
-            config,
-            transport,
-            next_id: Cell::new(1),
-        }
-    }
-
-    pub fn config(&self) -> &CitreaConfig {
-        &self.config
-    }
-
-    fn rpc_call(
-        &self,
-        method: &str,
-        params: serde_json::Value,
-    ) -> Result<serde_json::Value, BridgeError> {
-        let id = self.next_id.get();
-        self.next_id.set(id.wrapping_add(1));
-
-        let req = JsonRpcRequest {
-            jsonrpc: "2.0",
-            id,
-            method: method.to_string(),
-            params,
-        };
-
-        let resp = self.transport.send(&self.config.rpc_url, &req)?;
-
-        if let Some(err) = resp.error {
-            return Err(BridgeError::ConnectionError(format!(
-                "RPC error {}: {}",
-                err.code, err.message
-            )));
-        }
-
-        resp.result
-            .ok_or_else(|| BridgeError::ConnectionError("RPC response missing result".into()))
-    }
-
-    // ── Chain-specific methods ──────────────────────────────────────
-
-    /// Query the status of a DA batch on Bitcoin L1.
     pub fn get_da_batch_status(&self, batch_index: u64) -> Result<DaBatchStatus, BridgeError> {
         let result = self.rpc_call(
             "citrea_getDaBatchStatus",
@@ -290,20 +228,7 @@ impl<T: RpcTransport> RollupBridge for CitreaBridge<T> {
         let entries: Vec<serde_json::Value> = serde_json::from_value(result)
             .map_err(|e| BridgeError::NullifierSyncFailed(format!("parse: {e}")))?;
 
-        entries
-            .into_iter()
-            .map(|e| {
-                let chain_id = e["chain_id"].as_u64().unwrap_or(0);
-                let epoch_id = e["epoch_id"].as_u64().unwrap_or(0);
-                let root = hex_to_field(e["root"].as_str().unwrap_or(""))
-                    .unwrap_or(pallas::Base::zero());
-                Ok(RemoteNullifierEpochRoot {
-                    chain_id,
-                    epoch_id,
-                    root,
-                })
-            })
-            .collect()
+        parse_remote_nullifier_roots(entries)
     }
 }
 
@@ -397,5 +322,71 @@ mod tests {
         let mut cfg = CitreaConfig::default();
         cfg.proof_mode = ZkProofMode::FullVerification;
         assert_eq!(cfg.proof_mode, ZkProofMode::FullVerification);
+    }
+
+    // ── Mock transport tests ────────────────────────────────────────
+
+    use super::super::mock::MockTransport;
+
+    #[test]
+    fn mock_poll_deposits() {
+        let commitment = field_to_hex(&pallas::Base::from(42u64));
+        let transport = MockTransport::new()
+            .on("citrea_getDeposits", serde_json::json!([{
+                "commitment": commitment,
+                "amount": 50000,
+                "tx_id": "bb".repeat(32),
+                "l1_block_height": 800000
+            }]));
+        let bridge = CitreaBridge::with_transport(CitreaConfig::default(), transport);
+        let deps = bridge.poll_deposits().unwrap();
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0].amount, 50000);
+    }
+
+    #[test]
+    fn mock_verify_proof_true() {
+        let transport = MockTransport::new()
+            .on("citrea_verifyProof", serde_json::json!(true));
+        let bridge = CitreaBridge::with_transport(CitreaConfig::default(), transport);
+        assert!(bridge.verify_proof(&[1u8; 32], &[]).unwrap());
+    }
+
+    #[test]
+    fn mock_verify_proof_false() {
+        let transport = MockTransport::new()
+            .on("citrea_verifyProof", serde_json::json!(false));
+        let bridge = CitreaBridge::with_transport(CitreaConfig::default(), transport);
+        assert!(!bridge.verify_proof(&[1u8; 32], &[]).unwrap());
+    }
+
+    #[test]
+    fn mock_commit_state_root() {
+        let transport = MockTransport::new()
+            .on("citrea_commitRoot", serde_json::json!(true));
+        let bridge = CitreaBridge::with_transport(CitreaConfig::default(), transport);
+        assert!(bridge.commit_state_root(pallas::Base::zero()).is_ok());
+    }
+
+    #[test]
+    fn mock_nullifier_roots_error_propagation() {
+        let transport = MockTransport::new()
+            .on("citrea_getRemoteNullifierRoots", serde_json::json!([
+                { "chain_id": 1, "epoch_id": 5, "root": "invalid_hex" }
+            ]));
+        let bridge = CitreaBridge::with_transport(CitreaConfig::default(), transport);
+        let result = bridge.fetch_remote_nullifier_roots();
+        assert!(result.is_err(), "invalid hex root should propagate error");
+    }
+
+    #[test]
+    fn mock_nullifier_roots_missing_fields() {
+        let transport = MockTransport::new()
+            .on("citrea_getRemoteNullifierRoots", serde_json::json!([
+                { "epoch_id": 5, "root": "aa".repeat(32) }
+            ]));
+        let bridge = CitreaBridge::with_transport(CitreaConfig::default(), transport);
+        let result = bridge.fetch_remote_nullifier_roots();
+        assert!(result.is_err(), "missing chain_id should propagate error");
     }
 }

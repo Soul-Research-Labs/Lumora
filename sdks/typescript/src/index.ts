@@ -21,4 +21,7 @@ export type {
   StealthScanRequest,
   EncryptedNoteResponse,
   StealthScanResponse,
+  BitvmStatusResponse,
+  BitvmPollResponse,
+  BitvmCommitRootResponse,
 } from "./lumora";

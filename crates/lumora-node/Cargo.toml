@@ -13,6 +13,7 @@ lumora-circuits = { workspace = true }
 lumora-prover = { workspace = true }
 lumora-verifier = { workspace = true }
 lumora-contracts = { workspace = true }
+lumora-bitvm = { workspace = true }
 pasta_curves = { workspace = true }
 ff = { workspace = true }
 rand = { workspace = true }

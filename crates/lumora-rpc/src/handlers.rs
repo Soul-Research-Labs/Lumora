@@ -483,6 +483,58 @@ pub async fn stealth_scan(
     Json(StealthScanResp { notes, count })
 }
 
+// ── BitVM Bridge ───────────────────────────────────────────────────
+
+/// GET /bitvm/status — Check whether a BitVM bridge is active.
+pub async fn bitvm_status(
+    State(state): State<AppState>,
+) -> Json<BitvmStatusResp> {
+    let node = state.read().await;
+    Json(BitvmStatusResp {
+        bridge_active: node.has_bridge(),
+        deposits_processed: 0,
+        roots_committed: 0,
+    })
+}
+
+/// POST /bitvm/poll — Poll the host chain for new deposits.
+pub async fn bitvm_poll_deposits(
+    State(state): State<AppState>,
+) -> Result<Json<BitvmPollResp>, (StatusCode, Json<ErrorResp>)> {
+    let mut node = state.write().await;
+    let new_deposits = node.poll_bridge_deposits().map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            Json(ErrorResp {
+                error: format!("bridge poll failed: {e}"),
+            }),
+        )
+    })?;
+    if new_deposits > 0 {
+        tracing::info!(new_deposits, "polled L1 deposits via BitVM bridge");
+    }
+    Ok(Json(BitvmPollResp { new_deposits }))
+}
+
+/// POST /bitvm/commit-root — Commit the current Merkle root to the host chain.
+pub async fn bitvm_commit_root(
+    State(state): State<AppState>,
+) -> Result<Json<BitvmCommitRootResp>, (StatusCode, Json<ErrorResp>)> {
+    let mut node = state.write().await;
+    node.commit_root_to_bridge().map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            Json(ErrorResp {
+                error: format!("bridge commit failed: {e}"),
+            }),
+        )
+    })?;
+    let root = node.pool.state.current_root();
+    Ok(Json(BitvmCommitRootResp {
+        committed_root: field_to_hex(root),
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

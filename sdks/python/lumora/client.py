@@ -253,3 +253,17 @@ class LumoraClient:
             "from_leaf_index": from_leaf_index,
             "limit": limit,
         })
+
+    # ── BitVM Bridge ────────────────────────────────────────────────
+
+    def bitvm_status(self) -> dict[str, Any]:
+        """Check BitVM bridge status."""
+        return self._request("GET", "/bitvm/status")
+
+    def bitvm_poll_deposits(self) -> dict[str, Any]:
+        """Poll the host chain for new deposits via the BitVM bridge."""
+        return self._request("POST", "/bitvm/poll")
+
+    def bitvm_commit_root(self) -> dict[str, Any]:
+        """Commit the current Merkle root to the host chain."""
+        return self._request("POST", "/bitvm/commit-root")

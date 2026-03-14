@@ -237,3 +237,27 @@ pub struct StealthScanResp {
 pub struct ErrorResp {
     pub error: String,
 }
+
+// ── BitVM Bridge ───────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct BitvmStatusResp {
+    /// Whether a BitVM bridge is configured.
+    pub bridge_active: bool,
+    /// Number of L1 deposits polled and processed.
+    pub deposits_processed: u64,
+    /// Number of roots committed to the host chain.
+    pub roots_committed: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BitvmPollResp {
+    /// Number of new deposits processed in this poll.
+    pub new_deposits: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BitvmCommitRootResp {
+    /// Hex-encoded Merkle root that was committed.
+    pub committed_root: String,
+}

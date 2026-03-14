@@ -132,7 +132,11 @@ fn router_with_state(state: AppState) -> Router {
         .route("/stealth-scan", post(handlers::stealth_scan))
         // Sync operations
         .route("/sync/status", get(sync_handlers::sync_status))
-        .route("/sync/events", post(sync_handlers::sync_events));
+        .route("/sync/events", post(sync_handlers::sync_events))
+        // BitVM bridge operations
+        .route("/bitvm/status", get(handlers::bitvm_status))
+        .route("/bitvm/poll", post(handlers::bitvm_poll_deposits))
+        .route("/bitvm/commit-root", post(handlers::bitvm_commit_root));
 
     Router::new()
         .nest("/v1", v1.clone())

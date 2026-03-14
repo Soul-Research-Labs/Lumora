@@ -9,6 +9,7 @@ description = "HTTP JSON-RPC server for the Lumora privacy coprocessor"
 lumora-sdk = { workspace = true }
 lumora-node = { workspace = true }
 lumora-contracts = { workspace = true }
+lumora-bitvm = { workspace = true }
 lumora-circuits = { workspace = true }
 lumora-primitives = { workspace = true }
 lumora-verifier = { workspace = true }

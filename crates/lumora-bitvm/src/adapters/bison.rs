@@ -4,17 +4,15 @@
 //! via BitVM on Bitcoin L1. The adapter communicates with the Bison
 //! sequencer for deposit/withdrawal operations and proof status tracking.
 
-use std::cell::Cell;
-
 use pasta_curves::pallas;
 use serde::{Deserialize, Serialize};
 
 use lumora_contracts::bridge::{
     BridgeError, InboundDeposit, OutboundWithdrawal, RemoteNullifierEpochRoot, RollupBridge,
 };
-use lumora_contracts::rollup::{JsonRpcRequest, OfflineTransport, RpcTransport};
+use lumora_contracts::rollup::{JsonRpcRequest, OfflineTransport, OnChainVerifier, RpcTransport};
 
-use super::{field_to_hex, hex_to_field};
+use super::{bridge_boilerplate, field_to_hex, hex_to_field, parse_remote_nullifier_roots, sha256};
 
 // ─── Configuration ──────────────────────────────────────────────────────
 
@@ -89,60 +87,9 @@ pub struct BatchRoot {
 // ─── Bridge ─────────────────────────────────────────────────────────────
 
 /// Bison Labs bridge adapter.
-pub struct BisonBridge<T: RpcTransport = OfflineTransport> {
-    config: BisonConfig,
-    transport: T,
-    next_id: Cell<u64>,
-}
-
-impl BisonBridge<OfflineTransport> {
-    pub fn new(config: BisonConfig) -> Self {
-        Self {
-            config,
-            transport: OfflineTransport,
-            next_id: Cell::new(1),
-        }
-    }
-}
+bridge_boilerplate!(BisonBridge, BisonConfig);
 
 impl<T: RpcTransport> BisonBridge<T> {
-    pub fn with_transport(config: BisonConfig, transport: T) -> Self {
-        Self {
-            config,
-            transport,
-            next_id: Cell::new(1),
-        }
-    }
-
-    pub fn config(&self) -> &BisonConfig {
-        &self.config
-    }
-
-    fn rpc_call(
-        &self,
-        method: &str,
-        params: serde_json::Value,
-    ) -> Result<serde_json::Value, BridgeError> {
-        let id = self.next_id.get();
-        self.next_id.set(id.wrapping_add(1));
-        let req = JsonRpcRequest {
-            jsonrpc: "2.0",
-            id,
-            method: method.to_string(),
-            params,
-        };
-        let resp = self.transport.send(&self.config.rpc_url, &req)?;
-        if let Some(err) = resp.error {
-            return Err(BridgeError::ConnectionError(format!(
-                "RPC error {}: {}",
-                err.code, err.message
-            )));
-        }
-        resp.result
-            .ok_or_else(|| BridgeError::ConnectionError("RPC response missing result".into()))
-    }
-
-    /// Query the STARK proof status for a batch.
     pub fn get_stark_proof_status(
         &self,
         batch_id: u64,
@@ -234,16 +181,24 @@ impl<T: RpcTransport> RollupBridge for BisonBridge<T> {
         let result = self.rpc_call("bison_getRemoteNullifierRoots", serde_json::json!([]))?;
         let entries: Vec<serde_json::Value> = serde_json::from_value(result)
             .map_err(|e| BridgeError::NullifierSyncFailed(format!("parse: {e}")))?;
-        entries
-            .into_iter()
-            .map(|e| {
-                let chain_id = e["chain_id"].as_u64().unwrap_or(0);
-                let epoch_id = e["epoch_id"].as_u64().unwrap_or(0);
-                let root = hex_to_field(e["root"].as_str().unwrap_or(""))
-                    .unwrap_or(pallas::Base::zero());
-                Ok(RemoteNullifierEpochRoot { chain_id, epoch_id, root })
-            })
-            .collect()
+        parse_remote_nullifier_roots(entries)
+    }
+}
+
+impl<T: RpcTransport> OnChainVerifier for BisonBridge<T> {
+    fn verify_proof(
+        &self,
+        proof_bytes: &[u8],
+        _public_inputs: &[pallas::Base],
+    ) -> Result<bool, BridgeError> {
+        let proof_hash = hex::encode(sha256(proof_bytes));
+        let result = self.rpc_call(
+            "bison_verifyProof",
+            serde_json::json!({ "proof_hash": proof_hash }),
+        )?;
+        result
+            .as_bool()
+            .ok_or_else(|| BridgeError::VerificationFailed("expected boolean result".into()))
     }
 }
 

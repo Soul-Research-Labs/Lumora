@@ -276,7 +276,7 @@ fn test_bridge_and_verifier_integration() {
     use lumora_contracts::bridge::RollupBridge;
 
     let config = BitvmConfig::default();
-    let mut bridge = BitvmBridge::new(config, operator_key());
+    let bridge = BitvmBridge::new(config, operator_key());
     let mut verifier = BitvmVerifier::new(144);
 
     let trace = honest_trace();
@@ -325,5 +325,5 @@ fn test_bridge_and_verifier_integration() {
     // Bridge committed root tracking
     use pasta_curves::pallas;
     bridge.record_committed_root(pallas::Base::from(42u64));
-    assert_eq!(bridge.committed_roots().len(), 1);
+    assert_eq!(bridge.committed_root_count(), 1);
 }

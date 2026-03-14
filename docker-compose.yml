@@ -32,12 +32,67 @@ services:
     tmpfs:
       - /tmp
 
+  # BitVM operator daemon — posts bonded assertions for withdrawals.
+  # Only needed when running in bridge mode (LUMORA_BRIDGE_MODE=bitvm).
+  bitvm-operator:
+    build: .
+    container_name: lumora-bitvm-operator
+    restart: unless-stopped
+    volumes:
+      - lumora-data:/data:ro
+    environment:
+      RUST_LOG: info
+      LUMORA_MODE: bitvm-operator
+      LUMORA_RPC_ADDR: "lumora:3030"
+      # BITCOIN_RPC_URL: "http://bitcoind:8332"
+    secrets:
+      - lumora_operator_key
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1"
+    cap_drop:
+      - ALL
+    read_only: true
+    depends_on:
+      - lumora
+
+  # BitVM challenger daemon — monitors assertions and disputes fraud.
+  bitvm-challenger:
+    build: .
+    container_name: lumora-bitvm-challenger
+    restart: unless-stopped
+    volumes:
+      - lumora-data:/data:ro
+    environment:
+      RUST_LOG: info
+      LUMORA_MODE: bitvm-challenger
+      LUMORA_RPC_ADDR: "lumora:3030"
+      # BITCOIN_RPC_URL: "http://bitcoind:8332"
+    secrets:
+      - lumora_challenger_key
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1"
+    cap_drop:
+      - ALL
+    read_only: true
+    depends_on:
+      - lumora
+
 # Docker secrets for production API key management.
 # Create the secret: echo "your-strong-api-key" | docker secret create lumora_api_key -
 # Or for local compose: echo "your-strong-api-key" > ./secrets/api_key.txt
 secrets:
   lumora_api_key:
     file: ./secrets/api_key.txt
+  lumora_operator_key:
+    file: ./secrets/operator_key.txt
+  lumora_challenger_key:
+    file: ./secrets/challenger_key.txt
 
 volumes:
   lumora-data:

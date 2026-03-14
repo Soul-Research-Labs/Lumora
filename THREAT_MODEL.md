@@ -418,3 +418,58 @@ the root (which is opaque without the underlying nullifiers).
 
 **Residual risk**: The epoch boundary is predictable, allowing an observer to
 assign nullifiers to approximate time ranges.
+
+---
+
+## 11. BitVM Bridge Threats
+
+### 11.1 Operator Key Compromise
+
+**Threat**: An adversary obtains the operator's private key and posts
+fraudulent assertions to steal withdrawal funds.
+
+**Mitigation**: The `SecretKeyBytes` wrapper uses `zeroize` to clear key
+material from memory after use. Production deployments should use HSMs
+or threshold signatures (MuSig2 aggregation is supported).
+
+**Residual risk**: If the operator key is compromised before the assertion
+timeout, the attacker can front-run honest withdrawals.
+
+### 11.2 Challenger Liveness Failure
+
+**Threat**: All challengers go offline during the assertion timeout window,
+allowing a fraudulent assertion to finalize unchallenged.
+
+**Mitigation**: The `ChallengerDaemon` is designed to run as an always-on
+service with configurable poll intervals. Multiple independent challengers
+can monitor the same set of assertions.
+
+**Residual risk**: A coordinated DDoS against all known challengers could
+prevent timely challenges. The `challenge_timeout_blocks` parameter should
+be set conservatively (default: 144 blocks / ~24 hours).
+
+### 11.3 Adapter RPC Manipulation
+
+**Threat**: A malicious or compromised RPC endpoint returns fabricated
+deposit events or manipulated nullifier roots, causing the node to credit
+non-existent deposits.
+
+**Mitigation**: Adapters use `parse_remote_nullifier_roots()` with strict
+validation — missing or malformed fields return errors instead of silently
+substituting defaults. Multiple RPC endpoints should be configured for
+cross-verification.
+
+**Residual risk**: If all configured RPC endpoints are compromised
+simultaneously, false deposits could be processed until detected.
+
+### 11.4 Bond Insufficiency
+
+**Threat**: The operator's bond is insufficient to cover the withdrawal
+amount, reducing the economic deterrent against fraud.
+
+**Mitigation**: The `BitvmConfig.bond_sats` parameter must be set to at
+least the maximum expected withdrawal amount. `ProtocolManager` rejects
+assertions without sufficient bonds.
+
+**Residual risk**: Volatile BTC/asset exchange rates could make bonds
+temporarily insufficient.

@@ -63,20 +63,21 @@ Key design principles:
 
 ## Crate Responsibilities
 
-| Crate               | Role                                                                                                                              |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `lumora-primitives` | Poseidon hash, field utilities, domain-separated nullifiers (V2), fixed-size proof envelopes, serde helpers                       |
-| `lumora-note`       | Note model, spending/viewing keys, ECIES encryption, BIP39 mnemonics, stealth addresses (ECDH one-time keys)                      |
-| `lumora-tree`       | Depth-32 incremental Merkle tree with append and pruning                                                                          |
-| `lumora-circuits`   | Halo2 transfer and withdraw circuits, constraint definitions, domain-aware witness inputs                                         |
-| `lumora-prover`     | Proof generation engine, parallel proving, proof pipeline, proof envelope wrapping                                                |
-| `lumora-verifier`   | Proof verification, batch verification, versioned verifier sets                                                                   |
-| `lumora-contracts`  | Privacy pool state, deposit/transfer/withdraw logic, WAL, snapshots, events, compliance, governance, incentives, epoch management |
-| `lumora-node`       | Node daemon, mempool, peer registry, sync protocol, Byzantine detection, batch accumulator, cross-chain bridge/rollup sync        |
-| `lumora-client`     | HTTP client for the RPC API                                                                                                       |
-| `lumora-sdk`        | High-level SDK: wallets, transaction history, note management, stealth sends                                                      |
-| `lumora-cli`        | Interactive REPL with wallet encryption and key management                                                                        |
-| `lumora-rpc`        | Axum HTTP server, route handlers, relay jitter middleware, background tasks (batch/epoch loops), stealth-scan, epoch-roots        |
+| Crate               | Role                                                                                                                                           |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lumora-primitives` | Poseidon hash, field utilities, domain-separated nullifiers (V2), fixed-size proof envelopes, serde helpers                                    |
+| `lumora-note`       | Note model, spending/viewing keys, ECIES encryption, BIP39 mnemonics, stealth addresses (ECDH one-time keys)                                   |
+| `lumora-tree`       | Depth-32 incremental Merkle tree with append and pruning                                                                                       |
+| `lumora-circuits`   | Halo2 transfer and withdraw circuits, constraint definitions, domain-aware witness inputs                                                      |
+| `lumora-prover`     | Proof generation engine, parallel proving, proof pipeline, proof envelope wrapping                                                             |
+| `lumora-verifier`   | Proof verification, batch verification, versioned verifier sets                                                                                |
+| `lumora-contracts`  | Privacy pool state, deposit/transfer/withdraw logic, WAL, snapshots, events, compliance, governance, incentives, epoch management              |
+| `lumora-node`       | Node daemon, mempool, peer registry, sync protocol, Byzantine detection, batch accumulator, cross-chain bridge/rollup sync                     |
+| `lumora-client`     | HTTP client for the RPC API                                                                                                                    |
+| `lumora-sdk`        | High-level SDK: wallets, transaction history, note management, stealth sends                                                                   |
+| `lumora-cli`        | Interactive REPL with wallet encryption and key management                                                                                     |
+| `lumora-rpc`        | Axum HTTP server, route handlers, relay jitter middleware, background tasks (batch/epoch loops), stealth-scan, epoch-roots                     |
+| `lumora-bitvm`      | BitVM2 bridge: `BitvmBridge` (operator withdrawals, state root commits), `BitvmVerifier` (optimistic verification), challenger, 13 L2 adapters |
 
 ## Data Flow: Private Transfer
 
@@ -221,18 +222,19 @@ Nodes communicate via:
 
 ## Security Layers
 
-| Layer             | Mechanism                                                     |
-| ----------------- | ------------------------------------------------------------- |
-| Proof system      | Halo2 IPA, transparent SRS, no trusted setup                  |
-| Note privacy      | ECIES encryption (ChaCha20-Poly1305), viewing key separation  |
-| Stealth addresses | ECDH one-time keys, unlinkable payments                       |
-| Nullifier privacy | Domain-separated V2 nullifiers, cross-chain replay prevention |
-| State integrity   | HMAC-SHA256 on persisted state and deltas                     |
-| API security      | API key authentication, rate limiting, body size limits       |
-| Relay privacy     | Configurable jitter (50–500 ms) to prevent timing correlation |
-| Wallet security   | AES-256-GCM encryption, Argon2 key derivation                 |
-| Compliance        | Pluggable oracle interface for KYC/AML                        |
-| Proof envelopes   | Fixed-size padding prevents proof-size side channels          |
+| Layer             | Mechanism                                                                                             |
+| ----------------- | ----------------------------------------------------------------------------------------------------- |
+| Proof system      | Halo2 IPA, transparent SRS, no trusted setup                                                          |
+| Note privacy      | ECIES encryption (ChaCha20-Poly1305), viewing key separation                                          |
+| Stealth addresses | ECDH one-time keys, unlinkable payments                                                               |
+| Nullifier privacy | Domain-separated V2 nullifiers, cross-chain replay prevention                                         |
+| State integrity   | HMAC-SHA256 on persisted state and deltas                                                             |
+| API security      | API key authentication, rate limiting, body size limits                                               |
+| Relay privacy     | Configurable jitter (50–500 ms) to prevent timing correlation                                         |
+| Wallet security   | AES-256-GCM encryption, Argon2 key derivation                                                         |
+| Compliance        | Pluggable oracle interface for KYC/AML                                                                |
+| Proof envelopes   | Fixed-size padding prevents proof-size side channels                                                  |
+| BitVM2 bridge     | Optimistic verification on Bitcoin L1; bonded assertions with challenge-response and timeout finality |
 
 ## Related Documents
 

@@ -238,6 +238,78 @@ impl Challenger {
 }
 
 // ---------------------------------------------------------------------------
+// Async challenger daemon
+// ---------------------------------------------------------------------------
+
+/// Async challenger daemon that monitors for assertions and disputes fraud.
+///
+/// Wraps the synchronous [`Challenger`] with a tokio-driven poll loop.
+pub struct ChallengerDaemon {
+    challenger: Challenger,
+    poll_interval: std::time::Duration,
+}
+
+impl ChallengerDaemon {
+    /// Create a new challenger daemon.
+    pub fn new(challenger: Challenger) -> Self {
+        Self {
+            challenger,
+            poll_interval: std::time::Duration::from_secs(15),
+        }
+    }
+
+    /// Set the polling interval.
+    pub fn with_poll_interval(mut self, interval: std::time::Duration) -> Self {
+        self.poll_interval = interval;
+        self
+    }
+
+    /// Access the inner challenger.
+    pub fn challenger(&self) -> &Challenger {
+        &self.challenger
+    }
+
+    /// Mutable access to the inner challenger.
+    pub fn challenger_mut(&mut self) -> &mut Challenger {
+        &mut self.challenger
+    }
+
+    /// Run the challenger daemon until the cancellation token fires.
+    ///
+    /// `fetch_assertions` is called each tick to find new operator assertions.
+    /// `on_fraud` is called when fraud is detected with the Disprove TX.
+    pub async fn run<F, G>(
+        &mut self,
+        mut fetch_assertions: F,
+        mut on_fraud: G,
+        cancel: tokio::sync::watch::Receiver<bool>,
+    ) where
+        F: FnMut() -> Vec<(Assertion, OutPoint)>,
+        G: FnMut(Transaction),
+    {
+        tracing::info!(
+            poll_interval_secs = self.poll_interval.as_secs(),
+            "challenger daemon started"
+        );
+        loop {
+            if *cancel.borrow() {
+                tracing::info!("challenger daemon shutting down");
+                break;
+            }
+
+            // Observe new assertions
+            let new_assertions = fetch_assertions();
+            for (assertion, outpoint) in new_assertions {
+                tracing::debug!(id = ?assertion.id, "observed new assertion");
+                self.challenger.observe_assertion(assertion, outpoint);
+            }
+
+            tokio::time::sleep(self.poll_interval).await;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 

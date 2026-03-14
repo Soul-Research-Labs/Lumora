@@ -373,3 +373,41 @@ Deserialized via `verify_proof` with `Blake2bRead` transcript.
 
 JSON format via serde. Field elements serialized as hex strings via custom
 `serde_field` module. Merkle tree serialized as leaf array + filled subtrees.
+
+---
+
+## 10. BitVM2 Bridge Protocol
+
+### Overview
+
+The BitVM2 bridge enables trustless withdrawals from the Lumora privacy pool
+to Bitcoin L1 using an optimistic verification protocol. An operator posts
+a bonded assertion claiming the validity of a withdrawal proof. If no
+challenger disputes the assertion within a timeout window, the withdrawal
+is finalized and the operator reclaims their bond.
+
+### Assertion Lifecycle
+
+```
+Pending ──► Challenged ──► Responded ──► Finalized
+   │             │                          │
+   │             └──► Slashed               │
+   └────────────────────────────────────────┘
+              (timeout → Finalized)
+```
+
+### Components
+
+| Component         | Role                                                                  |
+| ----------------- | --------------------------------------------------------------------- |
+| `BitvmBridge`     | `RollupBridge` impl: poll deposits, execute withdrawals, commit roots |
+| `BitvmVerifier`   | `OnChainVerifier` impl: verifies assertion reached Finalized state    |
+| `Operator`        | Posts bonded assertions, responds to challenges                       |
+| `Challenger`      | Monitors assertions, issues dispute at specific step                  |
+| `ProtocolManager` | Assertion state machine (register/challenge/respond/slash/finalize)   |
+
+### Adapters
+
+13 Bitcoin L2/sidechain adapters implement `RollupBridge` for chain-specific
+RPC communication: Citrea, BOB, BitLayer, Merlin, BEVM, Babylon, Stacks/sBTC,
+RGB, Lightning, Liquid, Ark, Rooch, Bison.

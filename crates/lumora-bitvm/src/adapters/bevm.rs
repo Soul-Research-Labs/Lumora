@@ -4,18 +4,15 @@
 //! Taproot-based multisig. This adapter communicates with BEVM's EVM
 //! JSON-RPC endpoint and Taproot-specific extensions.
 
-use std::cell::Cell;
-
-use ff::PrimeField;
 use pasta_curves::pallas;
 use serde::{Deserialize, Serialize};
 
 use lumora_contracts::bridge::{
     BridgeError, InboundDeposit, OutboundWithdrawal, RemoteNullifierEpochRoot, RollupBridge,
 };
-use lumora_contracts::rollup::{JsonRpcRequest, OfflineTransport, RpcTransport};
+use lumora_contracts::rollup::{JsonRpcRequest, OfflineTransport, OnChainVerifier, RpcTransport};
 
-use super::{field_to_hex, hex_to_field};
+use super::{bridge_boilerplate, field_to_hex, hex_to_field, parse_remote_nullifier_roots, sha256};
 
 // ─── Configuration ──────────────────────────────────────────────────────
 
@@ -91,60 +88,9 @@ pub struct ConsensusStatus {
 // ─── Bridge ─────────────────────────────────────────────────────────────
 
 /// BEVM bridge adapter.
-pub struct BevmBridge<T: RpcTransport = OfflineTransport> {
-    config: BevmConfig,
-    transport: T,
-    next_id: Cell<u64>,
-}
-
-impl BevmBridge<OfflineTransport> {
-    pub fn new(config: BevmConfig) -> Self {
-        Self {
-            config,
-            transport: OfflineTransport,
-            next_id: Cell::new(1),
-        }
-    }
-}
+bridge_boilerplate!(BevmBridge, BevmConfig);
 
 impl<T: RpcTransport> BevmBridge<T> {
-    pub fn with_transport(config: BevmConfig, transport: T) -> Self {
-        Self {
-            config,
-            transport,
-            next_id: Cell::new(1),
-        }
-    }
-
-    pub fn config(&self) -> &BevmConfig {
-        &self.config
-    }
-
-    fn rpc_call(
-        &self,
-        method: &str,
-        params: serde_json::Value,
-    ) -> Result<serde_json::Value, BridgeError> {
-        let id = self.next_id.get();
-        self.next_id.set(id.wrapping_add(1));
-        let req = JsonRpcRequest {
-            jsonrpc: "2.0",
-            id,
-            method: method.to_string(),
-            params,
-        };
-        let resp = self.transport.send(&self.config.rpc_url, &req)?;
-        if let Some(err) = resp.error {
-            return Err(BridgeError::ConnectionError(format!(
-                "RPC error {}: {}",
-                err.code, err.message
-            )));
-        }
-        resp.result
-            .ok_or_else(|| BridgeError::ConnectionError("RPC response missing result".into()))
-    }
-
-    /// Get Taproot deposits from the BEVM bridge.
     pub fn get_taproot_deposits(&self) -> Result<Vec<TaprootDeposit>, BridgeError> {
         let result = self.rpc_call("bevm_getTaprootDeposits", serde_json::json!([]))?;
         serde_json::from_value(result)
@@ -221,16 +167,24 @@ impl<T: RpcTransport> RollupBridge for BevmBridge<T> {
         let result = self.rpc_call("bevm_getRemoteNullifierRoots", serde_json::json!([]))?;
         let entries: Vec<serde_json::Value> = serde_json::from_value(result)
             .map_err(|e| BridgeError::NullifierSyncFailed(format!("parse: {e}")))?;
-        entries
-            .into_iter()
-            .map(|e| {
-                let chain_id = e["chain_id"].as_u64().unwrap_or(0);
-                let epoch_id = e["epoch_id"].as_u64().unwrap_or(0);
-                let root = hex_to_field(e["root"].as_str().unwrap_or(""))
-                    .unwrap_or(pallas::Base::zero());
-                Ok(RemoteNullifierEpochRoot { chain_id, epoch_id, root })
-            })
-            .collect()
+        parse_remote_nullifier_roots(entries)
+    }
+}
+
+impl<T: RpcTransport> OnChainVerifier for BevmBridge<T> {
+    fn verify_proof(
+        &self,
+        proof_bytes: &[u8],
+        _public_inputs: &[pallas::Base],
+    ) -> Result<bool, BridgeError> {
+        let proof_hash = hex::encode(sha256(proof_bytes));
+        let result = self.rpc_call(
+            "bevm_verifyProof",
+            serde_json::json!({ "proof_hash": proof_hash }),
+        )?;
+        result
+            .as_bool()
+            .ok_or_else(|| BridgeError::VerificationFailed("expected boolean result".into()))
     }
 }
 

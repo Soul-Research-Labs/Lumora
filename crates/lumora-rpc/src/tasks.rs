@@ -20,6 +20,9 @@ const BATCH_POLL_INTERVAL: Duration = Duration::from_secs(5);
 /// Interval between epoch finalization checks.
 const EPOCH_CHECK_INTERVAL: Duration = Duration::from_secs(60);
 
+/// Interval between bridge deposit polling.
+const BRIDGE_POLL_INTERVAL: Duration = Duration::from_secs(30);
+
 /// Maximum time to wait for background tasks to finish during shutdown.
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -81,10 +84,17 @@ pub fn spawn_background_tasks(
     }));
 
     // Epoch finalization task
-    let epoch_state = state;
-    let epoch_rx = shutdown_rx;
+    let epoch_state = state.clone();
+    let epoch_rx = shutdown_rx.clone();
     handles.push(tokio::spawn(async move {
         epoch_finalize_loop(epoch_state, epoch_rx).await;
+    }));
+
+    // Bridge deposit polling task
+    let bridge_state = state;
+    let bridge_rx = shutdown_rx;
+    handles.push(tokio::spawn(async move {
+        bridge_poll_loop(bridge_state, bridge_rx).await;
     }));
 
     BackgroundHandle { handles, shutdown_tx }
@@ -152,6 +162,38 @@ async fn epoch_finalize_loop(
     }
 }
 
+/// Periodically poll the bridge for new L1 deposits and process them.
+///
+/// Only runs if the node has a bridge configured. Logs each poll result.
+async fn bridge_poll_loop(
+    state: Arc<RwLock<LumoraNode>>,
+    mut shutdown: tokio::sync::watch::Receiver<bool>,
+) {
+    let mut interval = tokio::time::interval(BRIDGE_POLL_INTERVAL);
+    loop {
+        tokio::select! {
+            _ = interval.tick() => {}
+            _ = shutdown.changed() => {
+                tracing::info!("bridge_poll_loop shutting down gracefully");
+                return;
+            }
+        }
+        let mut node = state.write().await;
+        if !node.has_bridge() {
+            continue;
+        }
+        match node.poll_bridge_deposits() {
+            Ok(0) => {}
+            Ok(n) => {
+                tracing::info!(new_deposits = n, "bridge poll: processed L1 deposits");
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "bridge poll failed");
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -161,7 +203,7 @@ mod tests {
         let node = LumoraNode::init();
         let state = Arc::new(RwLock::new(node));
         let handle = spawn_background_tasks(state);
-        assert_eq!(handle.len(), 2);
+        assert_eq!(handle.len(), 3);
         // Graceful shutdown — tasks should exit on their own.
         handle.shutdown().await;
     }

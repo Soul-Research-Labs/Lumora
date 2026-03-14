@@ -118,6 +118,24 @@ Dependencies are monitored via:
    is constant-time on standard platforms but may leak timing on non-standard
    targets. See `THREAT_MODEL.md` §4.10.
 
+## BitVM Bridge Security
+
+The `lumora-bitvm` crate implements a Bitcoin-native bridge with these
+security properties:
+
+- **Key material**: Operator and challenger secret keys use `SecretKeyBytes`
+  with `ZeroizeOnDrop` to prevent sensitive material lingering in memory.
+- **Bonded assertions**: Every withdrawal assertion requires a BTC bond
+  (configurable via `BitvmConfig.bond_sats`) that is slashed on fraud.
+- **Challenge-response**: Any party can post a challenge within the timeout
+  window. The `ProtocolManager` state machine enforces valid transitions.
+- **Adapter validation**: RPC response parsing via `parse_remote_nullifier_roots()`
+  rejects malformed data rather than silently defaulting to zero values.
+- **Send + Sync bounds**: The bridge is safe for concurrent access via
+  `Arc<RwLock<LumoraNode>>` in the RPC server.
+
+See `THREAT_MODEL.md` §11 for BitVM-specific threat analysis.
+
 ## Related Documents
 
 - [THREAT_MODEL.md](THREAT_MODEL.md) — Detailed threat model and attack surface

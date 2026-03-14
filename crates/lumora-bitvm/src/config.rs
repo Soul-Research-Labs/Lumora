@@ -1,6 +1,7 @@
 //! Configuration types for the BitVM bridge.
 
 use serde::{Deserialize, Serialize};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Default challenge timeout in Bitcoin blocks (~1 day).
 pub const DEFAULT_CHALLENGE_TIMEOUT_BLOCKS: u32 = 144;
@@ -11,14 +12,24 @@ pub const DEFAULT_BOND_SATS: u64 = 10_000_000;
 /// Default minimum confirmations before considering a deposit final.
 pub const DEFAULT_MIN_CONFIRMATIONS: u32 = 6;
 
+/// A zeroize-on-drop wrapper for a 32-byte secret key.
+#[derive(Clone, Zeroize, ZeroizeOnDrop)]
+pub struct SecretKeyBytes(pub [u8; 32]);
+
+impl std::fmt::Debug for SecretKeyBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SecretKeyBytes([REDACTED])")
+    }
+}
+
 /// Configuration for the BitVM bridge operator.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BitvmConfig {
     /// Bitcoin Core JSON-RPC URL.
     pub bitcoin_rpc_url: String,
-    /// Operator's secret key (32-byte hex). Loaded from env in production.
+    /// Operator's secret key (32-byte). Zeroized on drop.
     #[serde(skip)]
-    pub operator_secret_key: Option<[u8; 32]>,
+    pub operator_secret_key: Option<SecretKeyBytes>,
     /// Bond amount in satoshis staked per assertion.
     pub bond_sats: u64,
     /// Number of blocks the challenger has to dispute an assertion.
@@ -47,9 +58,9 @@ impl Default for BitvmConfig {
 pub struct ChallengerConfig {
     /// Bitcoin Core JSON-RPC URL.
     pub bitcoin_rpc_url: String,
-    /// Challenger's secret key (32-byte hex). Loaded from env in production.
+    /// Challenger's secret key (32-byte). Zeroized on drop.
     #[serde(skip)]
-    pub challenger_secret_key: Option<[u8; 32]>,
+    pub challenger_secret_key: Option<SecretKeyBytes>,
     /// Polling interval in seconds for watching operator assertions.
     pub watch_interval_secs: u64,
     /// Minimum profit (sats) required before challenging (bond - fees).

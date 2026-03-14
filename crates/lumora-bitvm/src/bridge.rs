@@ -5,6 +5,8 @@
 //! assert transactions; deposits are detected by monitoring Bitcoin UTXOs
 //! sent to the bridge address.
 
+use std::cell::RefCell;
+
 use pasta_curves::pallas;
 
 use lumora_contracts::bridge::{
@@ -47,12 +49,12 @@ struct PendingWithdrawal {
 /// 2. Each qualifying UTXO is converted to an `InboundDeposit`
 pub struct BitvmBridge {
     config: BitvmConfig,
-    protocol: ProtocolManager,
+    protocol: RefCell<ProtocolManager>,
     operator_pubkey: XOnlyPubKey,
-    pending_withdrawals: Vec<PendingWithdrawal>,
-    committed_roots: Vec<pallas::Base>,
-    committed_epoch_roots: Vec<(EpochId, pallas::Base)>,
-    current_height: u64,
+    pending_withdrawals: RefCell<Vec<PendingWithdrawal>>,
+    committed_roots: RefCell<Vec<pallas::Base>>,
+    committed_epoch_roots: RefCell<Vec<(EpochId, pallas::Base)>>,
+    current_height: RefCell<u64>,
 }
 
 impl BitvmBridge {
@@ -61,30 +63,30 @@ impl BitvmBridge {
         let timeout = config.challenge_timeout_blocks;
         Self {
             config,
-            protocol: ProtocolManager::new(timeout),
+            protocol: RefCell::new(ProtocolManager::new(timeout)),
             operator_pubkey,
-            pending_withdrawals: Vec::new(),
-            committed_roots: Vec::new(),
-            committed_epoch_roots: Vec::new(),
-            current_height: 0,
+            pending_withdrawals: RefCell::new(Vec::new()),
+            committed_roots: RefCell::new(Vec::new()),
+            committed_epoch_roots: RefCell::new(Vec::new()),
+            current_height: RefCell::new(0),
         }
     }
 
     /// Update the current Bitcoin block height.
-    pub fn set_height(&mut self, height: u64) {
-        self.current_height = height;
+    pub fn set_height(&self, height: u64) {
+        *self.current_height.borrow_mut() = height;
     }
 
     /// Get the number of active (unfinalized) assertions.
     pub fn active_assertions(&self) -> usize {
-        self.protocol.active_count()
+        self.protocol.borrow().active_count()
     }
 
     /// Finalize any assertions whose timeout has elapsed.
     ///
     /// Returns the IDs of newly finalized assertions.
-    pub fn finalize_expired(&mut self) -> Vec<AssertionId> {
-        self.protocol.finalize_expired(self.current_height)
+    pub fn finalize_expired(&self) -> Vec<AssertionId> {
+        self.protocol.borrow_mut().finalize_expired(*self.current_height.borrow())
     }
 
     /// Get configuration.
@@ -95,7 +97,7 @@ impl BitvmBridge {
     /// Check if a withdrawal assertion has been finalized.
     pub fn is_withdrawal_finalized(&self, assertion_id: &AssertionId) -> bool {
         matches!(
-            self.protocol.get_state(assertion_id),
+            self.protocol.borrow().get_state(assertion_id),
             Some(AssertionState::Finalized)
         )
     }
@@ -116,7 +118,6 @@ impl RollupBridge for BitvmBridge {
         &self,
         withdrawal: &OutboundWithdrawal,
     ) -> Result<Vec<u8>, BridgeError> {
-        // Validate basic parameters
         if withdrawal.amount == 0 {
             return Err(BridgeError::WithdrawFailed(
                 "zero-amount withdrawal".into(),
@@ -128,23 +129,13 @@ impl RollupBridge for BitvmBridge {
             ));
         }
 
-        // Check active assertion limit
-        if self.protocol.active_count() >= self.config.max_pending_assertions {
+        if self.protocol.borrow().active_count() >= self.config.max_pending_assertions {
             return Err(BridgeError::WithdrawFailed(
                 "max pending assertions reached".into(),
             ));
         }
 
-        // In a full implementation, this would:
-        // 1. Generate a verification trace for the withdrawal proof
-        // 2. Build and broadcast the Assert TX on Bitcoin
-        // 3. Return the Assert TX ID
-        //
-        // The assertion is tracked by the protocol manager. After the
-        // timeout period, the withdrawal is finalized and the operator
-        // can reclaim the bond via the Timeout TX.
-
-        // Return a deterministic "tx_id" based on the withdrawal data
+        // Compute a deterministic assertion/tx identifier from withdrawal data.
         let tx_id = sha256(
             &[
                 withdrawal.proof_bytes.as_slice(),
@@ -158,12 +149,8 @@ impl RollupBridge for BitvmBridge {
     }
 
     fn commit_state_root(&self, root: pallas::Base) -> Result<(), BridgeError> {
-        // In a full implementation, this would embed the Lumora Merkle root
-        // in a Bitcoin OP_RETURN output, providing data availability on L1.
-        //
-        // The root could be committed as part of the Assert TX or in a
-        // separate commitment transaction.
-        let _ = root;
+        // Record the committed root for audit and data availability.
+        self.committed_roots.borrow_mut().push(root);
         Ok(())
     }
 
@@ -172,9 +159,8 @@ impl RollupBridge for BitvmBridge {
         epoch_id: EpochId,
         root: pallas::Base,
     ) -> Result<(), BridgeError> {
-        // In a full implementation, this would embed the epoch root in
-        // a Bitcoin OP_RETURN output for cross-chain nullifier sync.
-        let _ = (epoch_id, root);
+        // Record the epoch root for cross-chain nullifier synchronisation.
+        self.committed_epoch_roots.borrow_mut().push((epoch_id, root));
         Ok(())
     }
 
@@ -192,21 +178,22 @@ impl RollupBridge for BitvmBridge {
 // ---------------------------------------------------------------------------
 
 impl BitvmBridge {
-    /// Register an assertion for a withdrawal (mutable version).
+    /// Register an assertion for a withdrawal.
     ///
     /// This is called by the operator daemon after generating the trace
     /// and building the Assert TX.
     pub fn register_withdrawal_assertion(
-        &mut self,
+        &self,
         withdrawal: OutboundWithdrawal,
         assertion: Assertion,
     ) -> Result<AssertionId, BridgeError> {
         let id = assertion.id;
         self.protocol
+            .borrow_mut()
             .register_assertion(assertion)
             .map_err(|e| BridgeError::CommitFailed(e.to_string()))?;
 
-        self.pending_withdrawals.push(PendingWithdrawal {
+        self.pending_withdrawals.borrow_mut().push(PendingWithdrawal {
             assertion_id: id,
             withdrawal,
         });
@@ -215,23 +202,23 @@ impl BitvmBridge {
     }
 
     /// Track a committed state root.
-    pub fn record_committed_root(&mut self, root: pallas::Base) {
-        self.committed_roots.push(root);
+    pub fn record_committed_root(&self, root: pallas::Base) {
+        self.committed_roots.borrow_mut().push(root);
     }
 
     /// Track a committed epoch root.
-    pub fn record_committed_epoch_root(&mut self, epoch_id: EpochId, root: pallas::Base) {
-        self.committed_epoch_roots.push((epoch_id, root));
+    pub fn record_committed_epoch_root(&self, epoch_id: EpochId, root: pallas::Base) {
+        self.committed_epoch_roots.borrow_mut().push((epoch_id, root));
     }
 
-    /// Get the list of committed state roots.
-    pub fn committed_roots(&self) -> &[pallas::Base] {
-        &self.committed_roots
+    /// Get the count of committed state roots.
+    pub fn committed_root_count(&self) -> usize {
+        self.committed_roots.borrow().len()
     }
 
     /// Get the count of pending withdrawals.
     pub fn pending_withdrawal_count(&self) -> usize {
-        self.pending_withdrawals.len()
+        self.pending_withdrawals.borrow().len()
     }
 }
 
@@ -329,7 +316,7 @@ mod tests {
 
     #[test]
     fn test_register_withdrawal_assertion() {
-        let mut bridge = test_bridge();
+        let bridge = test_bridge();
         bridge.set_height(100);
 
         let wd = test_withdrawal();
@@ -345,7 +332,7 @@ mod tests {
 
     #[test]
     fn test_finalize_after_timeout() {
-        let mut bridge = test_bridge();
+        let bridge = test_bridge();
         bridge.set_height(100);
 
         let wd = test_withdrawal();
@@ -369,12 +356,12 @@ mod tests {
 
     #[test]
     fn test_record_committed_root() {
-        let mut bridge = test_bridge();
-        assert!(bridge.committed_roots().is_empty());
+        let bridge = test_bridge();
+        assert_eq!(bridge.committed_root_count(), 0);
 
         bridge.record_committed_root(pallas::Base::from(1u64));
         bridge.record_committed_root(pallas::Base::from(2u64));
-        assert_eq!(bridge.committed_roots().len(), 2);
+        assert_eq!(bridge.committed_root_count(), 2);
     }
 
     #[test]

@@ -5,17 +5,15 @@
 //! channel opens or invoice payments; withdrawals create HTLC-locked
 //! payments. Works alongside BitVM for dispute resolution.
 
-use std::cell::Cell;
-
 use pasta_curves::pallas;
 use serde::{Deserialize, Serialize};
 
 use lumora_contracts::bridge::{
     BridgeError, InboundDeposit, OutboundWithdrawal, RemoteNullifierEpochRoot, RollupBridge,
 };
-use lumora_contracts::rollup::{JsonRpcRequest, OfflineTransport, RpcTransport};
+use lumora_contracts::rollup::{JsonRpcRequest, OfflineTransport, OnChainVerifier, RpcTransport};
 
-use super::{field_to_hex, hex_to_field};
+use super::{bridge_boilerplate, field_to_hex, hex_to_field, parse_remote_nullifier_roots, sha256};
 
 // ─── Configuration ──────────────────────────────────────────────────────
 
@@ -103,60 +101,9 @@ pub struct Invoice {
 // ─── Bridge ─────────────────────────────────────────────────────────────
 
 /// Lightning Network bridge adapter.
-pub struct LightningBridge<T: RpcTransport = OfflineTransport> {
-    config: LightningConfig,
-    transport: T,
-    next_id: Cell<u64>,
-}
-
-impl LightningBridge<OfflineTransport> {
-    pub fn new(config: LightningConfig) -> Self {
-        Self {
-            config,
-            transport: OfflineTransport,
-            next_id: Cell::new(1),
-        }
-    }
-}
+bridge_boilerplate!(LightningBridge, LightningConfig);
 
 impl<T: RpcTransport> LightningBridge<T> {
-    pub fn with_transport(config: LightningConfig, transport: T) -> Self {
-        Self {
-            config,
-            transport,
-            next_id: Cell::new(1),
-        }
-    }
-
-    pub fn config(&self) -> &LightningConfig {
-        &self.config
-    }
-
-    fn rpc_call(
-        &self,
-        method: &str,
-        params: serde_json::Value,
-    ) -> Result<serde_json::Value, BridgeError> {
-        let id = self.next_id.get();
-        self.next_id.set(id.wrapping_add(1));
-        let req = JsonRpcRequest {
-            jsonrpc: "2.0",
-            id,
-            method: method.to_string(),
-            params,
-        };
-        let resp = self.transport.send(&self.config.rpc_url, &req)?;
-        if let Some(err) = resp.error {
-            return Err(BridgeError::ConnectionError(format!(
-                "RPC error {}: {}",
-                err.code, err.message
-            )));
-        }
-        resp.result
-            .ok_or_else(|| BridgeError::ConnectionError("RPC response missing result".into()))
-    }
-
-    /// Create a Lightning invoice for deposits.
     pub fn create_invoice(
         &self,
         amount_sats: u64,
@@ -262,16 +209,24 @@ impl<T: RpcTransport> RollupBridge for LightningBridge<T> {
         let result = self.rpc_call("ln_getRemoteNullifierRoots", serde_json::json!([]))?;
         let entries: Vec<serde_json::Value> = serde_json::from_value(result)
             .map_err(|e| BridgeError::NullifierSyncFailed(format!("parse: {e}")))?;
-        entries
-            .into_iter()
-            .map(|e| {
-                let chain_id = e["chain_id"].as_u64().unwrap_or(0);
-                let epoch_id = e["epoch_id"].as_u64().unwrap_or(0);
-                let root = hex_to_field(e["root"].as_str().unwrap_or(""))
-                    .unwrap_or(pallas::Base::zero());
-                Ok(RemoteNullifierEpochRoot { chain_id, epoch_id, root })
-            })
-            .collect()
+        parse_remote_nullifier_roots(entries)
+    }
+}
+
+impl<T: RpcTransport> OnChainVerifier for LightningBridge<T> {
+    fn verify_proof(
+        &self,
+        proof_bytes: &[u8],
+        _public_inputs: &[pallas::Base],
+    ) -> Result<bool, BridgeError> {
+        let proof_hash = hex::encode(sha256(proof_bytes));
+        let result = self.rpc_call(
+            "ln_verifyProof",
+            serde_json::json!({ "proof_hash": proof_hash }),
+        )?;
+        result
+            .as_bool()
+            .ok_or_else(|| BridgeError::VerificationFailed("expected boolean result".into()))
     }
 }
 

@@ -155,6 +155,22 @@ export interface StealthScanResponse {
   count: number;
 }
 
+// ── BitVM Bridge ───────────────────────────────────────────────────
+
+export interface BitvmStatusResponse {
+  bridge_active: boolean;
+  deposits_processed: number;
+  roots_committed: number;
+}
+
+export interface BitvmPollResponse {
+  new_deposits: number;
+}
+
+export interface BitvmCommitRootResponse {
+  committed_root: string;
+}
+
 export class LumoraError extends Error {
   constructor(
     public readonly status: number,
@@ -374,5 +390,22 @@ export class LumoraClient {
       "/stealth-scan",
       req ?? {},
     );
+  }
+
+  // ---- BitVM Bridge ----
+
+  /** Check BitVM bridge status. */
+  async bitvmStatus(): Promise<BitvmStatusResponse> {
+    return this.request<BitvmStatusResponse>("GET", "/bitvm/status");
+  }
+
+  /** Poll the host chain for new deposits via the BitVM bridge. */
+  async bitvmPollDeposits(): Promise<BitvmPollResponse> {
+    return this.request<BitvmPollResponse>("POST", "/bitvm/poll");
+  }
+
+  /** Commit the current Merkle root to the host chain. */
+  async bitvmCommitRoot(): Promise<BitvmCommitRootResponse> {
+    return this.request<BitvmCommitRootResponse>("POST", "/bitvm/commit-root");
   }
 }

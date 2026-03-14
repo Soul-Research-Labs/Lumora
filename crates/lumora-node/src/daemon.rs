@@ -9,6 +9,7 @@
 use lumora_contracts::{
     ContractError, DepositReceipt, DepositRequest, PrivacyPool, TransferReceipt,
     TransferRequest, WithdrawReceipt, WithdrawRequest,
+    BridgeError, OutboundWithdrawal, RollupBridge,
 };
 use lumora_prover::{
     self, InputNote, OutputNote, ProverParams, WithdrawProverParams,
@@ -33,6 +34,8 @@ pub struct LumoraNode {
     pub note_store: NoteStore,
     /// Batch accumulator for metadata-resistant transaction submission.
     pub batch: BatchAccumulator,
+    /// Optional rollup bridge for host-chain interaction (BitVM, Strata, etc.).
+    pub bridge: Option<Box<dyn RollupBridge + Send + Sync>>,
 }
 
 impl LumoraNode {
@@ -48,6 +51,7 @@ impl LumoraNode {
             tree: IncrementalMerkleTree::new(),
             note_store: NoteStore::new(),
             batch: BatchAccumulator::new(BatchConfig::default()),
+            bridge: None,
         }
     }
 
@@ -76,6 +80,7 @@ impl LumoraNode {
             tree: IncrementalMerkleTree::new(),
             note_store: NoteStore::new(),
             batch: BatchAccumulator::new(BatchConfig::default()),
+            bridge: None,
         }
     }
 
@@ -244,7 +249,60 @@ impl LumoraNode {
             tree,
             note_store,
             batch: BatchAccumulator::new(BatchConfig::default()),
+            bridge: None,
         })
+    }
+
+    /// Set the rollup bridge implementation.
+    pub fn set_bridge(&mut self, bridge: Box<dyn RollupBridge + Send + Sync>) {
+        self.bridge = Some(bridge);
+    }
+
+    /// Poll the host chain for new deposits and insert them into the pool.
+    ///
+    /// Returns the number of deposits processed.
+    pub fn poll_bridge_deposits(&mut self) -> Result<usize, BridgeError> {
+        let bridge = match &self.bridge {
+            Some(b) => b,
+            None => return Ok(0),
+        };
+        let deposits = bridge.poll_deposits()?;
+        let count = deposits.len();
+        for dep in &deposits {
+            let _ = self.pool.deposit(&DepositRequest {
+                commitment: dep.commitment,
+                amount: dep.amount,
+            });
+            self.tree.insert(dep.commitment);
+        }
+        Ok(count)
+    }
+
+    /// Commit the current Merkle root to the host chain via the bridge.
+    pub fn commit_root_to_bridge(&mut self) -> Result<(), BridgeError> {
+        let bridge = match &self.bridge {
+            Some(b) => b,
+            None => return Ok(()),
+        };
+        let root = self.pool.state.current_root();
+        bridge.commit_state_root(root)
+    }
+
+    /// Execute a withdrawal on the host chain via the bridge.
+    pub fn bridge_withdrawal(
+        &self,
+        withdrawal: &OutboundWithdrawal,
+    ) -> Result<Vec<u8>, BridgeError> {
+        let bridge = match &self.bridge {
+            Some(b) => b,
+            None => return Err(BridgeError::ConnectionError("no bridge configured".into())),
+        };
+        bridge.execute_withdrawal(withdrawal)
+    }
+
+    /// Whether a rollup bridge is currently configured.
+    pub fn has_bridge(&self) -> bool {
+        self.bridge.is_some()
     }
 }
 

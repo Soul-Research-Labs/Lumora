@@ -5,9 +5,6 @@
 //! infrastructure, enabling Lumora to use staking deposits, slashing
 //! proofs (verified via BitVM), and finality signatures.
 
-use std::cell::Cell;
-
-use ff::PrimeField;
 use pasta_curves::pallas;
 use serde::{Deserialize, Serialize};
 
@@ -16,7 +13,7 @@ use lumora_contracts::bridge::{
 };
 use lumora_contracts::rollup::{JsonRpcRequest, OfflineTransport, OnChainVerifier, RpcTransport};
 
-use super::{field_to_hex, hex_to_field, sha256};
+use super::{bridge_boilerplate, field_to_hex, hex_to_field, parse_remote_nullifier_roots, sha256};
 
 // ─── Configuration ──────────────────────────────────────────────────────
 
@@ -139,60 +136,9 @@ pub struct FinalityReceipt {
 // ─── Bridge ─────────────────────────────────────────────────────────────
 
 /// Babylon bridge adapter.
-pub struct BabylonBridge<T: RpcTransport = OfflineTransport> {
-    config: BabylonConfig,
-    transport: T,
-    next_id: Cell<u64>,
-}
-
-impl BabylonBridge<OfflineTransport> {
-    pub fn new(config: BabylonConfig) -> Self {
-        Self {
-            config,
-            transport: OfflineTransport,
-            next_id: Cell::new(1),
-        }
-    }
-}
+bridge_boilerplate!(BabylonBridge, BabylonConfig);
 
 impl<T: RpcTransport> BabylonBridge<T> {
-    pub fn with_transport(config: BabylonConfig, transport: T) -> Self {
-        Self {
-            config,
-            transport,
-            next_id: Cell::new(1),
-        }
-    }
-
-    pub fn config(&self) -> &BabylonConfig {
-        &self.config
-    }
-
-    fn rpc_call(
-        &self,
-        method: &str,
-        params: serde_json::Value,
-    ) -> Result<serde_json::Value, BridgeError> {
-        let id = self.next_id.get();
-        self.next_id.set(id.wrapping_add(1));
-        let req = JsonRpcRequest {
-            jsonrpc: "2.0",
-            id,
-            method: method.to_string(),
-            params,
-        };
-        let resp = self.transport.send(&self.config.rpc_url, &req)?;
-        if let Some(err) = resp.error {
-            return Err(BridgeError::ConnectionError(format!(
-                "RPC error {}: {}",
-                err.code, err.message
-            )));
-        }
-        resp.result
-            .ok_or_else(|| BridgeError::ConnectionError("RPC response missing result".into()))
-    }
-
-    /// Get the current validator set from the Babylon network.
     pub fn get_validator_set(&self) -> Result<ValidatorSet, BridgeError> {
         let result = self.rpc_call("babylon_getValidatorSet", serde_json::json!([]))?;
         serde_json::from_value(result)
@@ -301,16 +247,7 @@ impl<T: RpcTransport> RollupBridge for BabylonBridge<T> {
         let result = self.rpc_call("babylon_getRemoteNullifierRoots", serde_json::json!([]))?;
         let entries: Vec<serde_json::Value> = serde_json::from_value(result)
             .map_err(|e| BridgeError::NullifierSyncFailed(format!("parse: {e}")))?;
-        entries
-            .into_iter()
-            .map(|e| {
-                let chain_id = e["chain_id"].as_u64().unwrap_or(0);
-                let epoch_id = e["epoch_id"].as_u64().unwrap_or(0);
-                let root = hex_to_field(e["root"].as_str().unwrap_or(""))
-                    .unwrap_or(pallas::Base::zero());
-                Ok(RemoteNullifierEpochRoot { chain_id, epoch_id, root })
-            })
-            .collect()
+        parse_remote_nullifier_roots(entries)
     }
 }
 

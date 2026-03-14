@@ -64,3 +64,8 @@ doc = false
 name = "fuzz_bitvm_protocol"
 path = "fuzz_targets/bitvm_protocol.rs"
 doc = false
+
+[[bin]]
+name = "fuzz_bitvm_adapter_parse"
+path = "fuzz_targets/bitvm_adapter_parse.rs"
+doc = false

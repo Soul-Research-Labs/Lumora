@@ -61,6 +61,9 @@ lumora-sdk = { path = "crates/lumora-sdk" }
 lumora-client = { path = "crates/lumora-client" }
 lumora-bitvm = { path = "crates/lumora-bitvm" }
 
+# Secp256k1
+k256 = { version = "0.13", features = ["schnorr", "arithmetic"] }
+
 # Security
 zeroize = { version = "1", features = ["derive"] }
 bip39 = "2"
