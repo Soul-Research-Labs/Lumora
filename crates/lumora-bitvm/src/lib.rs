@@ -36,6 +36,7 @@ pub mod trace;
 pub mod script;
 pub mod protocol;
 pub mod transactions;
+pub mod keys;
 pub mod bridge;
 pub mod verifier;
 pub mod operator;
