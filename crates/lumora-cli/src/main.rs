@@ -34,6 +34,45 @@ enum Commands {
         #[arg(long, default_value_t = false)]
         dry_run: bool,
     },
+    /// BitVM2 bridge management commands.
+    Bitvm {
+        #[command(subcommand)]
+        action: BitvmAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum BitvmAction {
+    /// Show BitVM bridge configuration and status.
+    Status {
+        /// Challenge timeout in blocks (default: 144).
+        #[arg(long, default_value_t = 144)]
+        timeout_blocks: u32,
+    },
+    /// Set up a new BitVM bridge (operator + challenger keypairs).
+    Setup {
+        /// Operator public key (hex, 32 bytes).
+        #[arg(long)]
+        operator_key: String,
+        /// Challenger public key (hex, 32 bytes).
+        #[arg(long)]
+        challenger_key: String,
+        /// Bond amount in satoshis (default: 10,000,000 = 0.1 BTC).
+        #[arg(long, default_value_t = 10_000_000)]
+        bond_sats: u64,
+        /// Challenge timeout in blocks (default: 144 = ~1 day).
+        #[arg(long, default_value_t = 144)]
+        timeout_blocks: u32,
+    },
+    /// Show details of a specific assertion.
+    Assertion {
+        /// Assertion ID (hex, 32 bytes).
+        #[arg(long)]
+        id: String,
+        /// Challenge timeout in blocks.
+        #[arg(long, default_value_t = 144)]
+        timeout_blocks: u32,
+    },
 }
 
 fn main() {
@@ -45,6 +84,7 @@ fn main() {
         Commands::MigrateNullifiers { wallet, chain_id, app_id, dry_run } => {
             migrate_nullifiers(&wallet, chain_id, app_id, dry_run);
         }
+        Commands::Bitvm { action } => handle_bitvm(action),
     }
 }
 
@@ -63,6 +103,116 @@ fn print_info() {
     println!("  lumora-node        Prover daemon + note store");
     println!("  lumora-client      Wallet + note management");
     println!("  lumora-sdk         High-level orchestrator");
+    println!("  lumora-bitvm       BitVM2 bridge verifier for Bitcoin L1");
+}
+
+fn handle_bitvm(action: BitvmAction) {
+    use lumora_bitvm::config::BitvmConfig;
+    use lumora_bitvm::transactions::XOnlyPubKey;
+
+    match action {
+        BitvmAction::Status { timeout_blocks } => {
+            println!("BitVM2 Bridge Status");
+            println!("====================");
+            println!();
+            let config = BitvmConfig {
+                challenge_timeout_blocks: timeout_blocks,
+                ..BitvmConfig::default()
+            };
+            println!("Challenge timeout : {} blocks (~{:.1} hours)",
+                config.challenge_timeout_blocks,
+                config.challenge_timeout_blocks as f64 * 10.0 / 60.0);
+            println!("Bond amount       : {} sats ({:.4} BTC)",
+                config.bond_sats, config.bond_sats as f64 / 100_000_000.0);
+            println!("Min confirmations : {}", config.min_confirmations);
+            println!("Max pending       : {}", config.max_pending_assertions);
+            println!();
+            println!("Proof system      : Halo2 IPA (K=13, Pallas/Vesta)");
+            println!("Trace commitment  : SHA-256 binary Merkle tree");
+            println!("Script model      : Split-and-hash (one step per leaf)");
+            println!();
+            println!("Step types:");
+            println!("  TranscriptInit   - Initialize Blake2b transcript + absorb PI");
+            println!("  CommitmentRead   - Read commitment points from proof stream");
+            println!("  ChallengeSqueeze - Squeeze Fiat-Shamir challenge");
+            println!("  MsmRound         - Multi-scalar multiplication accumulator");
+            println!("  IpaRound         - Inner product argument round");
+            println!("  FinalCheck       - Verify accumulated MSM equals identity");
+        }
+        BitvmAction::Setup { operator_key, challenger_key, bond_sats, timeout_blocks } => {
+            let op_bytes = match hex::decode(&operator_key) {
+                Ok(b) if b.len() == 32 => {
+                    let mut arr = [0u8; 32];
+                    arr.copy_from_slice(&b);
+                    arr
+                }
+                _ => {
+                    eprintln!("Error: operator_key must be 64 hex characters (32 bytes)");
+                    std::process::exit(1);
+                }
+            };
+            let ch_bytes = match hex::decode(&challenger_key) {
+                Ok(b) if b.len() == 32 => {
+                    let mut arr = [0u8; 32];
+                    arr.copy_from_slice(&b);
+                    arr
+                }
+                _ => {
+                    eprintln!("Error: challenger_key must be 64 hex characters (32 bytes)");
+                    std::process::exit(1);
+                }
+            };
+
+            let config = BitvmConfig {
+                bond_sats,
+                challenge_timeout_blocks: timeout_blocks,
+                ..BitvmConfig::default()
+            };
+
+            println!("BitVM2 Bridge Setup");
+            println!("===================");
+            println!();
+            println!("Operator key  : {}", hex::encode(op_bytes));
+            println!("Challenger key: {}", hex::encode(ch_bytes));
+            println!("Bond          : {} sats", config.bond_sats);
+            println!("Timeout       : {} blocks", config.challenge_timeout_blocks);
+            println!();
+
+            // Initialize key aggregation
+            let op_key = XOnlyPubKey(op_bytes);
+            let ch_key = XOnlyPubKey(ch_bytes);
+            let agg = lumora_bitvm::keys::aggregate_keys(&op_key, &ch_key);
+
+            println!("Aggregate key : {}", hex::encode(agg.combined_key.0));
+            println!("Op coefficient: {}", hex::encode(agg.operator_coeff));
+            println!("Ch coefficient: {}", hex::encode(agg.challenger_coeff));
+            println!();
+            println!("Pre-sign setup requires both parties online.");
+            println!("Run `lumora bitvm status` to verify configuration.");
+        }
+        BitvmAction::Assertion { id, timeout_blocks } => {
+            let id_bytes = match hex::decode(&id) {
+                Ok(b) if b.len() == 32 => {
+                    let mut arr = [0u8; 32];
+                    arr.copy_from_slice(&b);
+                    arr
+                }
+                _ => {
+                    eprintln!("Error: assertion ID must be 64 hex characters (32 bytes)");
+                    std::process::exit(1);
+                }
+            };
+
+            println!("Assertion Details");
+            println!("=================");
+            println!();
+            println!("ID            : {}", hex::encode(id_bytes));
+            println!("Timeout       : {} blocks", timeout_blocks);
+            println!();
+            println!("Note: Full assertion tracking requires a running operator");
+            println!("or challenger daemon connected to a Bitcoin node.");
+        }
+    }
 }
 
 fn migrate_nullifiers(wallet_path: &str, chain_id: u64, app_id: u64, dry_run: bool) {
