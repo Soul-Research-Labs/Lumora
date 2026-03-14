@@ -310,6 +310,11 @@ impl ProtocolManager {
             })
             .count()
     }
+
+    /// Iterate over all assertions and their states.
+    pub fn iter_assertions(&self) -> impl Iterator<Item = (&Assertion, &AssertionState)> {
+        self.assertions.values().map(|(a, s)| (a, s))
+    }
 }
 
 // ---------------------------------------------------------------------------
