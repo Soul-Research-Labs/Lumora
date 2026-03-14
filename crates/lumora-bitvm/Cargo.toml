@@ -1,0 +1,23 @@
+[package]
+name = "lumora-bitvm"
+description = "BitVM2 bridge verifier — trustless Bitcoin L1 verification of Lumora ZK proofs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lumora-primitives = { workspace = true }
+lumora-prover = { workspace = true }
+lumora-verifier = { workspace = true }
+lumora-contracts = { workspace = true }
+halo2_proofs = { workspace = true }
+pasta_curves = { workspace = true }
+ff = { workspace = true }
+group = { workspace = true }
+sha2 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+hex = { workspace = true }
+
+[dev-dependencies]
+rand = { workspace = true }

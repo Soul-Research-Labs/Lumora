@@ -13,6 +13,7 @@ members = [
     "crates/lumora-sdk",
     "crates/lumora-cli",
     "crates/lumora-rpc",
+    "crates/lumora-bitvm",
 ]
 
 [workspace.package]
@@ -58,6 +59,7 @@ lumora-contracts = { path = "crates/lumora-contracts" }
 lumora-node = { path = "crates/lumora-node" }
 lumora-sdk = { path = "crates/lumora-sdk" }
 lumora-client = { path = "crates/lumora-client" }
+lumora-bitvm = { path = "crates/lumora-bitvm" }
 
 # Security
 zeroize = { version = "1", features = ["derive"] }
