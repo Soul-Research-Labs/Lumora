@@ -245,5 +245,6 @@ Nodes communicate via:
 - [Stealth Addresses](stealth-addresses.md) — ECDH one-time address protocol
 - [State Persistence](state-persistence.md) — WAL, snapshots, recovery
 - [Light Client Design](light-client-design.md) — Light client protocol
+- [EMV Bridge Integration](emv-bridge.md) — EMVCo QR adapter contract and mapping details
 - [Protocol Specification](../PROTOCOL.md) — Formal protocol spec
 - [Threat Model](../THREAT_MODEL.md) — Attack surface analysis

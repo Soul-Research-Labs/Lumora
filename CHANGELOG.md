@@ -26,6 +26,8 @@ All notable changes to the Lumora project are documented in this file.
 
 - Added EMV adapter JSON-RPC contract section to `docs/api-guide.md`.
 - Updated `docs/architecture.md` adapter inventory to include EMVCo QR.
+- Added dedicated `docs/emv-bridge.md` integration guide with JSON-RPC
+  examples, validation rules, and Lumora type mapping.
 
 ### Phase 35 — EMVCo QR Adapter Integration
 

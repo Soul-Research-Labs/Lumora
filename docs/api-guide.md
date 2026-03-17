@@ -89,6 +89,9 @@ The BitVM bridge layer includes an EMVCo QR adapter (`EmvBridge`) for payment
 rail interoperability. This is an internal bridge interface (not an HTTP route
 on `lumora-rpc`) and communicates via adapter JSON-RPC methods.
 
+For full request/response examples and mapping details, see
+`docs/emv-bridge.md`.
+
 Expected EMV gateway methods:
 
 - `emv_getSettledQrPayments`
