@@ -170,6 +170,11 @@ impl<T: RpcTransport> EmvBridge<T> {
 }
 
 impl<T: RpcTransport> RollupBridge for EmvBridge<T> {
+    /// # Errors
+    ///
+    /// Returns `BridgeError::ConnectionError` if the config is invalid or the
+    /// gateway RPC call fails, or `BridgeError::DepositRejected` for
+    /// zero-amount deposits or malformed payment IDs.
     fn poll_deposits(&self) -> Result<Vec<InboundDeposit>, BridgeError> {
         self.validate_config()?;
         let result = self.rpc_call(
@@ -214,6 +219,11 @@ impl<T: RpcTransport> RollupBridge for EmvBridge<T> {
             .collect()
     }
 
+    /// # Errors
+    ///
+    /// Returns `BridgeError::WithdrawFailed` if the amount is zero, exceeds the
+    /// configured maximum, proof bytes are empty, the gateway rejects the
+    /// payout, or the payout ID is malformed.
     fn execute_withdrawal(&self, withdrawal: &OutboundWithdrawal) -> Result<Vec<u8>, BridgeError> {
         self.validate_config()?;
         if withdrawal.amount == 0 {
@@ -273,6 +283,10 @@ impl<T: RpcTransport> RollupBridge for EmvBridge<T> {
         )
     }
 
+    /// # Errors
+    ///
+    /// Returns `BridgeError::ConnectionError` if the config is invalid or the
+    /// gateway RPC call fails.
     fn commit_state_root(&self, root: pallas::Base) -> Result<(), BridgeError> {
         self.validate_config()?;
         self.rpc_call(
@@ -286,6 +300,10 @@ impl<T: RpcTransport> RollupBridge for EmvBridge<T> {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns `BridgeError::ConnectionError` if the config is invalid or the
+    /// gateway RPC call fails.
     fn commit_nullifier_epoch_root(&self, epoch_id: u64, root: pallas::Base) -> Result<(), BridgeError> {
         self.validate_config()?;
         self.rpc_call(
@@ -300,6 +318,11 @@ impl<T: RpcTransport> RollupBridge for EmvBridge<T> {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns `BridgeError::ConnectionError` if the config is invalid or the
+    /// gateway RPC call fails, or `BridgeError::NullifierSyncFailed` if the
+    /// response entries are malformed.
     fn fetch_remote_nullifier_roots(&self) -> Result<Vec<RemoteNullifierEpochRoot>, BridgeError> {
         self.validate_config()?;
         let result = self.rpc_call(
@@ -317,6 +340,11 @@ impl<T: RpcTransport> RollupBridge for EmvBridge<T> {
 }
 
 impl<T: RpcTransport> OnChainVerifier for EmvBridge<T> {
+    /// # Errors
+    ///
+    /// Returns `BridgeError::ConnectionError` if the config is invalid or the
+    /// gateway RPC call fails, or `BridgeError::VerificationFailed` if the
+    /// response is not a boolean.
     fn verify_proof(
         &self,
         proof_bytes: &[u8],
