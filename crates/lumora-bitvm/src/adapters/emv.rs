@@ -212,6 +212,7 @@ impl<T: RpcTransport> OnChainVerifier for EmvBridge<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::mock::MockTransport;
 
     #[test]
     fn default_config() {
@@ -233,5 +234,116 @@ mod tests {
     fn config_accessor() {
         let bridge = EmvBridge::new(EmvConfig::default());
         assert_eq!(bridge.config().network_id, "sandbox");
+    }
+
+    #[test]
+    fn mock_poll_deposits() {
+        let commitment = field_to_hex(&pallas::Base::from(42u64));
+        let transport = MockTransport::new().on(
+            "emv_getSettledQrPayments",
+            serde_json::json!([
+                {
+                    "commitment": commitment,
+                    "amount": 25000,
+                    "payment_id": "ab".repeat(32),
+                    "finality": 3
+                }
+            ]),
+        );
+
+        let bridge = EmvBridge::with_transport(EmvConfig::default(), transport);
+        let deposits = bridge.poll_deposits().unwrap();
+        assert_eq!(deposits.len(), 1);
+        assert_eq!(deposits[0].amount, 25000);
+        assert_eq!(deposits[0].tx_id.len(), 32);
+    }
+
+    #[test]
+    fn mock_poll_deposits_rejects_invalid_payment_id() {
+        let commitment = field_to_hex(&pallas::Base::from(42u64));
+        let transport = MockTransport::new().on(
+            "emv_getSettledQrPayments",
+            serde_json::json!([
+                {
+                    "commitment": commitment,
+                    "amount": 25000,
+                    "payment_id": "not_hex",
+                    "finality": 3
+                }
+            ]),
+        );
+
+        let bridge = EmvBridge::with_transport(EmvConfig::default(), transport);
+        let result = bridge.poll_deposits();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn mock_execute_withdrawal() {
+        let transport = MockTransport::new().on(
+            "emv_submitPayout",
+            serde_json::json!({
+                "payout_id": "cc".repeat(32),
+                "status": "accepted"
+            }),
+        );
+        let bridge = EmvBridge::with_transport(EmvConfig::default(), transport);
+        let wd = OutboundWithdrawal {
+            amount: 100_000,
+            recipient: [0xAA; 32],
+            proof_bytes: vec![1, 2, 3, 4],
+            nullifiers: [pallas::Base::from(1u64), pallas::Base::from(2u64)],
+        };
+
+        let tx_id = bridge.execute_withdrawal(&wd).unwrap();
+        assert_eq!(tx_id.len(), 32);
+    }
+
+    #[test]
+    fn mock_execute_withdrawal_rejected_status() {
+        let transport = MockTransport::new().on(
+            "emv_submitPayout",
+            serde_json::json!({
+                "payout_id": "cc".repeat(32),
+                "status": "rejected"
+            }),
+        );
+        let bridge = EmvBridge::with_transport(EmvConfig::default(), transport);
+        let wd = OutboundWithdrawal {
+            amount: 100_000,
+            recipient: [0xAA; 32],
+            proof_bytes: vec![1, 2, 3, 4],
+            nullifiers: [pallas::Base::from(1u64), pallas::Base::from(2u64)],
+        };
+
+        let result = bridge.execute_withdrawal(&wd);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn mock_commit_state_root() {
+        let transport = MockTransport::new().on("emv_commitStateRoot", serde_json::json!(true));
+        let bridge = EmvBridge::with_transport(EmvConfig::default(), transport);
+        assert!(bridge.commit_state_root(pallas::Base::zero()).is_ok());
+    }
+
+    #[test]
+    fn mock_verify_proof_true() {
+        let transport = MockTransport::new().on("emv_verifyProof", serde_json::json!(true));
+        let bridge = EmvBridge::with_transport(EmvConfig::default(), transport);
+        assert!(bridge.verify_proof(&[1u8; 32], &[]).unwrap());
+    }
+
+    #[test]
+    fn mock_fetch_remote_nullifier_roots_error() {
+        let transport = MockTransport::new().on(
+            "emv_getRemoteNullifierRoots",
+            serde_json::json!([
+                { "chain_id": 1, "epoch_id": 3, "root": "invalid_hex" }
+            ]),
+        );
+        let bridge = EmvBridge::with_transport(EmvConfig::default(), transport);
+        let result = bridge.fetch_remote_nullifier_roots();
+        assert!(result.is_err());
     }
 }
