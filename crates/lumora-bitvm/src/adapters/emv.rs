@@ -32,7 +32,7 @@ impl Default for EmvConfig {
         Self {
             rpc_url: String::from("http://127.0.0.1:9400"),
             network_id: String::from("sandbox"),
-            merchant_id: String::new(),
+            merchant_id: String::from("sandbox-merchant"),
             min_finality: 1,
             currency: String::from("BTC"),
         }
@@ -66,8 +66,28 @@ pub struct RpcEmvPaymentStatus {
 bridge_boilerplate!(EmvBridge, EmvConfig);
 
 impl<T: RpcTransport> EmvBridge<T> {
+    fn validate_config(&self) -> Result<(), BridgeError> {
+        if self.config.network_id.trim().is_empty() {
+            return Err(BridgeError::ConnectionError(
+                "invalid config: network_id must not be empty".into(),
+            ));
+        }
+        if self.config.merchant_id.trim().is_empty() {
+            return Err(BridgeError::ConnectionError(
+                "invalid config: merchant_id must not be empty".into(),
+            ));
+        }
+        if self.config.currency.trim().is_empty() {
+            return Err(BridgeError::ConnectionError(
+                "invalid config: currency must not be empty".into(),
+            ));
+        }
+        Ok(())
+    }
+
     /// Query payment status for a specific EMV payment id.
     pub fn get_payment_status(&self, payment_id: &str) -> Result<RpcEmvPaymentStatus, BridgeError> {
+        self.validate_config()?;
         let result = self.rpc_call(
             "emv_getPaymentStatus",
             serde_json::json!({
@@ -84,6 +104,7 @@ impl<T: RpcTransport> EmvBridge<T> {
 
 impl<T: RpcTransport> RollupBridge for EmvBridge<T> {
     fn poll_deposits(&self) -> Result<Vec<InboundDeposit>, BridgeError> {
+        self.validate_config()?;
         let result = self.rpc_call(
             "emv_getSettledQrPayments",
             serde_json::json!({
@@ -102,6 +123,7 @@ impl<T: RpcTransport> RollupBridge for EmvBridge<T> {
 
         deposits
             .into_iter()
+            .filter(|d| d.finality >= self.config.min_finality)
             .map(|d| {
                 let commitment = hex_to_field(&d.commitment)
                     .map_err(|e| BridgeError::DepositRejected(format!("bad commitment: {e}")))?;
@@ -118,6 +140,7 @@ impl<T: RpcTransport> RollupBridge for EmvBridge<T> {
     }
 
     fn execute_withdrawal(&self, withdrawal: &OutboundWithdrawal) -> Result<Vec<u8>, BridgeError> {
+        self.validate_config()?;
         let result = self.rpc_call(
             "emv_submitPayout",
             serde_json::json!({
@@ -137,7 +160,9 @@ impl<T: RpcTransport> RollupBridge for EmvBridge<T> {
         let payout: RpcEmvWithdrawalResult = serde_json::from_value(result)
             .map_err(|e| BridgeError::WithdrawFailed(format!("parse payout result: {e}")))?;
 
-        if payout.status != "accepted" && payout.status != "settled" {
+        if !payout.status.eq_ignore_ascii_case("accepted")
+            && !payout.status.eq_ignore_ascii_case("settled")
+        {
             return Err(BridgeError::WithdrawFailed(format!(
                 "gateway rejected payout with status '{}'",
                 payout.status
@@ -149,6 +174,7 @@ impl<T: RpcTransport> RollupBridge for EmvBridge<T> {
     }
 
     fn commit_state_root(&self, root: pallas::Base) -> Result<(), BridgeError> {
+        self.validate_config()?;
         self.rpc_call(
             "emv_commitStateRoot",
             serde_json::json!({
@@ -161,6 +187,7 @@ impl<T: RpcTransport> RollupBridge for EmvBridge<T> {
     }
 
     fn commit_nullifier_epoch_root(&self, epoch_id: u64, root: pallas::Base) -> Result<(), BridgeError> {
+        self.validate_config()?;
         self.rpc_call(
             "emv_commitNullifierEpochRoot",
             serde_json::json!({
@@ -174,6 +201,7 @@ impl<T: RpcTransport> RollupBridge for EmvBridge<T> {
     }
 
     fn fetch_remote_nullifier_roots(&self) -> Result<Vec<RemoteNullifierEpochRoot>, BridgeError> {
+        self.validate_config()?;
         let result = self.rpc_call(
             "emv_getRemoteNullifierRoots",
             serde_json::json!({
@@ -194,6 +222,7 @@ impl<T: RpcTransport> OnChainVerifier for EmvBridge<T> {
         proof_bytes: &[u8],
         _public_inputs: &[pallas::Base],
     ) -> Result<bool, BridgeError> {
+        self.validate_config()?;
         let proof_hash = hex::encode(sha256(proof_bytes));
         let result = self.rpc_call(
             "emv_verifyProof",
@@ -219,6 +248,7 @@ mod tests {
         let cfg = EmvConfig::default();
         assert_eq!(cfg.rpc_url, "http://127.0.0.1:9400");
         assert_eq!(cfg.network_id, "sandbox");
+        assert_eq!(cfg.merchant_id, "sandbox-merchant");
         assert_eq!(cfg.min_finality, 1);
         assert_eq!(cfg.currency, "BTC");
     }
@@ -259,6 +289,28 @@ mod tests {
     }
 
     #[test]
+    fn mock_poll_deposits_filters_low_finality() {
+        let commitment = field_to_hex(&pallas::Base::from(42u64));
+        let mut cfg = EmvConfig::default();
+        cfg.min_finality = 3;
+        let transport = MockTransport::new().on(
+            "emv_getSettledQrPayments",
+            serde_json::json!([
+                {
+                    "commitment": commitment,
+                    "amount": 25000,
+                    "payment_id": "ab".repeat(32),
+                    "finality": 2
+                }
+            ]),
+        );
+
+        let bridge = EmvBridge::with_transport(cfg, transport);
+        let deposits = bridge.poll_deposits().unwrap();
+        assert!(deposits.is_empty());
+    }
+
+    #[test]
     fn mock_poll_deposits_rejects_invalid_payment_id() {
         let commitment = field_to_hex(&pallas::Base::from(42u64));
         let transport = MockTransport::new().on(
@@ -284,7 +336,7 @@ mod tests {
             "emv_submitPayout",
             serde_json::json!({
                 "payout_id": "cc".repeat(32),
-                "status": "accepted"
+                "status": "ACCEPTED"
             }),
         );
         let bridge = EmvBridge::with_transport(EmvConfig::default(), transport);
@@ -344,6 +396,15 @@ mod tests {
         );
         let bridge = EmvBridge::with_transport(EmvConfig::default(), transport);
         let result = bridge.fetch_remote_nullifier_roots();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn poll_deposits_fails_with_empty_merchant_id() {
+        let mut cfg = EmvConfig::default();
+        cfg.merchant_id.clear();
+        let bridge = EmvBridge::new(cfg);
+        let result = bridge.poll_deposits();
         assert!(result.is_err());
     }
 }
