@@ -20,6 +20,7 @@
 //! | [`ark`] | Ark Protocol | Virtual UTXO layer |
 //! | [`rooch`] | Rooch Network | MoveOS application layer |
 //! | [`bison`] | Bison Labs | ZK-STARK rollup |
+//! | [`emv`] | EMVCo QR | Payment rail adapter |
 
 pub mod citrea;
 pub mod bob;
@@ -34,6 +35,7 @@ pub mod liquid;
 pub mod ark;
 pub mod rooch;
 pub mod bison;
+pub mod emv;
 
 use ff::PrimeField;
 use pasta_curves::pallas;
