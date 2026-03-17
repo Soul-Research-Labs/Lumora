@@ -67,6 +67,15 @@ All notable changes to the Lumora project are documented in this file.
 - Updated EMV bridge integration docs with verification context fields and
   replay-resistance expectations.
 
+### Phase 39 — Bridge Spec Clarification
+
+#### Documentation
+
+- Added explicit bridge extension-point section to `PROTOCOL.md`, clarifying
+  required `RollupBridge` operations and optional verifier behavior.
+- Updated architecture and README language to mark EMVCo QR adapter maturity
+  as alpha.
+
 ### Phase 35 — EMVCo QR Adapter Integration
 
 #### Features

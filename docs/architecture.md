@@ -77,7 +77,7 @@ Key design principles:
 | `lumora-sdk`        | High-level SDK: wallets, transaction history, note management, stealth sends                                                                                           |
 | `lumora-cli`        | Interactive REPL with wallet encryption and key management                                                                                                             |
 | `lumora-rpc`        | Axum HTTP server, route handlers, relay jitter middleware, background tasks (batch/epoch loops), stealth-scan, epoch-roots                                             |
-| `lumora-bitvm`      | BitVM2 bridge: `BitvmBridge` (operator withdrawals, state root commits), `BitvmVerifier` (optimistic verification), challenger, 14 adapters (13 Bitcoin L2 + EMVCo QR) |
+| `lumora-bitvm`      | BitVM2 bridge: `BitvmBridge` (operator withdrawals, state root commits), `BitvmVerifier` (optimistic verification), challenger, 14 adapters (13 Bitcoin L2 production + EMVCo QR alpha) |
 
 ## Data Flow: Private Transfer
 

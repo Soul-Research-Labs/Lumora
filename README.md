@@ -101,7 +101,7 @@ Lumora enables confidential deposits, private transfers, and shielded withdrawal
 | `lumora-sdk`        | High-level `Lumora` orchestrator + serialization helpers                                                                           |
 | `lumora-rpc`        | Axum HTTP server, relay jitter middleware, proof envelope unwrap, epoch-roots endpoint                                             |
 | `lumora-cli`        | Interactive CLI (`lumora run`)                                                                                                     |
-| `lumora-bitvm`      | BitVM2 bridge: operator, challenger, optimistic verification, 14 adapters (13 Bitcoin L2 + EMVCo QR)                               |
+| `lumora-bitvm`      | BitVM2 bridge: operator, challenger, optimistic verification, 14 adapters (13 Bitcoin L2 + EMVCo QR [ALPHA])                       |
 
 ## Quick Start
 
@@ -284,7 +284,7 @@ See [docs/typescript-sdk.md](docs/typescript-sdk.md) for the complete API refere
 - **Metadata resistance** — Fixed-size 2048-byte proof envelopes, transaction batch accumulator with dummy padding, relay jitter middleware
 - **Epoch nullifier partitioning** — `EpochManager` partitions nullifiers into time-bounded epochs with Merkle root finalization
 - **Cross-chain nullifier sync** — `RollupBridge` publishes per-epoch nullifier roots and fetches roots from remote chains
-- **BitVM2 bridge** — Optimistic Bitcoin L1 verification via `BitvmBridge`; operator/challenger protocol with bonded assertions, challenge-response, and timeout-based finality; 14 adapters (13 Bitcoin L2/sidechain + EMVCo QR payment rail)
+- **BitVM2 bridge** — Optimistic Bitcoin L1 verification via `BitvmBridge`; operator/challenger protocol with bonded assertions, challenge-response, and timeout-based finality; 14 adapters (13 Bitcoin L2/sidechain + EMVCo QR payment rail [ALPHA])
 
 ## Testing & CI
 

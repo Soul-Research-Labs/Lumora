@@ -411,3 +411,41 @@ Pending ──► Challenged ──► Responded ──► Finalized
 14 adapters implement `RollupBridge` for chain-specific RPC communication:
 Citrea, BOB, BitLayer, Merlin, BEVM, Babylon, Stacks/sBTC, RGB, Lightning,
 Liquid, Ark, Rooch, Bison, and EMVCo QR.
+
+---
+
+## 11. Bridge Extension Points
+
+Lumora's proving and state-transition protocol remains chain-agnostic; host
+chain integration is performed through the `RollupBridge` trait boundary.
+
+Required extension points for a new bridge adapter:
+
+1. `poll_deposits()`
+Maps host-chain inbound events into `InboundDeposit` records.
+
+2. `execute_withdrawal()`
+Executes a verified Lumora `OutboundWithdrawal` on the host domain and returns
+an opaque transaction identifier.
+
+3. `commit_state_root()`
+Publishes the latest Lumora state root for external availability/finality.
+
+4. `commit_nullifier_epoch_root()`
+Publishes finalized epoch roots for cross-domain nullifier synchronization.
+
+5. `fetch_remote_nullifier_roots()`
+Retrieves remote epoch roots used to prevent cross-domain double spends.
+
+Optional extension point:
+
+- `OnChainVerifier::verify_proof()`
+Adapters may perform host-side verification checks; when implemented, requests
+should be bound to both proof bytes and public-input context.
+
+Implementation notes:
+
+- Domain-separated nullifiers (V2) should be preserved across bridge flows.
+- Adapter parsing should reject malformed roots/identifiers rather than
+   coercing values.
+- EMVCo QR support currently exists as an alpha adapter profile.
