@@ -2,6 +2,7 @@
 //!
 //! Integrates an EMVCo QR payment gateway through Lumora's bridge adapter model.
 
+use ff::PrimeField;
 use pasta_curves::pallas;
 use serde::{Deserialize, Serialize};
 
@@ -266,15 +267,26 @@ impl<T: RpcTransport> OnChainVerifier for EmvBridge<T> {
     fn verify_proof(
         &self,
         proof_bytes: &[u8],
-        _public_inputs: &[pallas::Base],
+        public_inputs: &[pallas::Base],
     ) -> Result<bool, BridgeError> {
         self.validate_config()?;
         let proof_hash = hex::encode(sha256(proof_bytes));
+        let public_input_hex: Vec<String> = public_inputs.iter().map(field_to_hex).collect();
+
+        let mut public_input_bytes = Vec::with_capacity(public_inputs.len() * 32);
+        for pi in public_inputs {
+            public_input_bytes.extend_from_slice(&pi.to_repr());
+        }
+        let public_inputs_hash = hex::encode(sha256(&public_input_bytes));
+
         let result = self.rpc_call(
             "emv_verifyProof",
             serde_json::json!({
                 "network_id": self.config.network_id,
                 "proof_hash": proof_hash,
+                "public_inputs": public_input_hex,
+                "public_input_count": public_inputs.len(),
+                "public_inputs_hash": public_inputs_hash,
             }),
         )?;
 
@@ -288,6 +300,38 @@ impl<T: RpcTransport> OnChainVerifier for EmvBridge<T> {
 mod tests {
     use super::*;
     use super::super::mock::MockTransport;
+    use std::sync::{Arc, Mutex};
+    use lumora_contracts::rollup::JsonRpcResponse;
+
+    #[derive(Clone)]
+    struct CaptureTransport {
+        result: serde_json::Value,
+        captured: Arc<Mutex<Option<JsonRpcRequest>>>,
+    }
+
+    impl CaptureTransport {
+        fn new(result: serde_json::Value) -> Self {
+            Self {
+                result,
+                captured: Arc::new(Mutex::new(None)),
+            }
+        }
+
+        fn captured_request(&self) -> Option<JsonRpcRequest> {
+            self.captured.lock().unwrap().clone()
+        }
+    }
+
+    impl RpcTransport for CaptureTransport {
+        fn send(&self, _url: &str, request: &JsonRpcRequest) -> Result<JsonRpcResponse, BridgeError> {
+            *self.captured.lock().unwrap() = Some(request.clone());
+            Ok(JsonRpcResponse {
+                id: request.id,
+                result: Some(self.result.clone()),
+                error: None,
+            })
+        }
+    }
 
     #[test]
     fn default_config() {
@@ -488,6 +532,23 @@ mod tests {
     }
 
     #[test]
+    fn verify_proof_includes_public_input_context() {
+        let transport = CaptureTransport::new(serde_json::json!(true));
+        let bridge = EmvBridge::with_transport(EmvConfig::default(), transport.clone());
+        let public_inputs = [pallas::Base::from(11u64), pallas::Base::from(22u64)];
+
+        assert!(bridge.verify_proof(&[0x42u8; 64], &public_inputs).unwrap());
+
+        let req = transport.captured_request().expect("missing captured request");
+        assert_eq!(req.method, "emv_verifyProof");
+        assert_eq!(req.params["public_input_count"], serde_json::json!(2));
+
+        let expected_hex: Vec<String> = public_inputs.iter().map(field_to_hex).collect();
+        assert_eq!(req.params["public_inputs"], serde_json::json!(expected_hex));
+        assert!(req.params["public_inputs_hash"].is_string());
+    }
+
+    #[test]
     fn mock_get_payment_status() {
         let transport = MockTransport::new().on(
             "emv_getPaymentStatus",
@@ -541,6 +602,32 @@ mod tests {
             "emv_getRemoteNullifierRoots",
             serde_json::json!([
                 { "chain_id": 1, "epoch_id": 3, "root": "invalid_hex" }
+            ]),
+        );
+        let bridge = EmvBridge::with_transport(EmvConfig::default(), transport);
+        let result = bridge.fetch_remote_nullifier_roots();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn mock_fetch_remote_nullifier_roots_missing_chain_id() {
+        let transport = MockTransport::new().on(
+            "emv_getRemoteNullifierRoots",
+            serde_json::json!([
+                { "epoch_id": 3, "root": "aa".repeat(32) }
+            ]),
+        );
+        let bridge = EmvBridge::with_transport(EmvConfig::default(), transport);
+        let result = bridge.fetch_remote_nullifier_roots();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn mock_fetch_remote_nullifier_roots_missing_epoch_id() {
+        let transport = MockTransport::new().on(
+            "emv_getRemoteNullifierRoots",
+            serde_json::json!([
+                { "chain_id": 1, "root": "aa".repeat(32) }
             ]),
         );
         let bridge = EmvBridge::with_transport(EmvConfig::default(), transport);

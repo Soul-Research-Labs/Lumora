@@ -179,7 +179,21 @@ fields.
 
 ### `emv_verifyProof`
 
-Returns a boolean indicating whether the gateway accepts a proof hash.
+Returns a boolean indicating whether the gateway accepts a proof request bound
+to both proof bytes and public-input context.
+
+Expected request fields:
+
+- `proof_hash` (sha256 of proof bytes)
+- `public_inputs` (field-element hex array)
+- `public_input_count` (array length)
+- `public_inputs_hash` (sha256 of concatenated 32-byte public inputs)
+
+Security expectation:
+
+- Gateways should verify both `proof_hash` and public-input context to avoid
+  accepting proofs outside their intended domain or replaying verification
+  decisions across mismatched inputs.
 
 Example result:
 

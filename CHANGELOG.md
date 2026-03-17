@@ -46,6 +46,27 @@ All notable changes to the Lumora project are documented in this file.
 - Updated deployment and API configuration docs with bridge selection and EMV
   environment variable references.
 
+### Phase 38 — EMV Verification Context Binding
+
+#### Security
+
+- **Public-input-aware verification requests** — `EmvBridge::verify_proof()`
+  now includes `public_inputs`, `public_input_count`, and
+  `public_inputs_hash` in the EMV verification RPC payload, in addition to
+  proof hash.
+
+#### Testing
+
+- Added capture-transport tests ensuring EMV proof verification requests carry
+  the expected public-input context.
+- Added nullifier-root parsing tests for missing `chain_id` and missing
+  `epoch_id` fields.
+
+#### Documentation
+
+- Updated EMV bridge integration docs with verification context fields and
+  replay-resistance expectations.
+
 ### Phase 35 — EMVCo QR Adapter Integration
 
 #### Features
