@@ -387,6 +387,54 @@ mod tests {
     }
 
     #[test]
+    fn mock_verify_proof_false() {
+        let transport = MockTransport::new().on("emv_verifyProof", serde_json::json!(false));
+        let bridge = EmvBridge::with_transport(EmvConfig::default(), transport);
+        assert!(!bridge.verify_proof(&[1u8; 32], &[]).unwrap());
+    }
+
+    #[test]
+    fn mock_get_payment_status() {
+        let transport = MockTransport::new().on(
+            "emv_getPaymentStatus",
+            serde_json::json!({
+                "payment_id": "ab".repeat(32),
+                "status": "settled",
+                "finality": 4
+            }),
+        );
+        let bridge = EmvBridge::with_transport(EmvConfig::default(), transport);
+        let status = bridge.get_payment_status(&"ab".repeat(32)).unwrap();
+        assert_eq!(status.status, "settled");
+        assert_eq!(status.finality, 4);
+    }
+
+    #[test]
+    fn mock_commit_nullifier_epoch_root() {
+        let transport = MockTransport::new().on("emv_commitNullifierEpochRoot", serde_json::json!(true));
+        let bridge = EmvBridge::with_transport(EmvConfig::default(), transport);
+        assert!(bridge
+            .commit_nullifier_epoch_root(7, pallas::Base::from(5u64))
+            .is_ok());
+    }
+
+    #[test]
+    fn mock_fetch_remote_nullifier_roots_success() {
+        let root = field_to_hex(&pallas::Base::from(9u64));
+        let transport = MockTransport::new().on(
+            "emv_getRemoteNullifierRoots",
+            serde_json::json!([
+                { "chain_id": 1, "epoch_id": 3, "root": root }
+            ]),
+        );
+        let bridge = EmvBridge::with_transport(EmvConfig::default(), transport);
+        let roots = bridge.fetch_remote_nullifier_roots().unwrap();
+        assert_eq!(roots.len(), 1);
+        assert_eq!(roots[0].chain_id, 1);
+        assert_eq!(roots[0].epoch_id, 3);
+    }
+
+    #[test]
     fn mock_fetch_remote_nullifier_roots_error() {
         let transport = MockTransport::new().on(
             "emv_getRemoteNullifierRoots",
