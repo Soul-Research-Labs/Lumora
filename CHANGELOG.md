@@ -4,6 +4,31 @@ All notable changes to the Lumora project are documented in this file.
 
 ## [Unreleased]
 
+### Phase 35 — EMVCo QR Adapter Integration
+
+#### Features
+
+- **EMVCo QR bridge adapter** — Added `EmvBridge` in `lumora-bitvm` as a
+  `RollupBridge` + `OnChainVerifier` implementation for EMV gateway JSON-RPC
+  interoperability.
+- **EMV mapping to Lumora bridge primitives** — Implemented QR payment polling
+  to `InboundDeposit`, payout execution from `OutboundWithdrawal`, state root
+  commits, nullifier epoch root commits, and remote nullifier root fetch.
+- **Adapter registry update** — Registered EMV adapter in adapter exports and
+  module documentation table.
+
+#### Testing
+
+- **Mock transport integration tests** — Added EMV adapter tests for:
+  default config, offline polling, config access, deposit mapping,
+  invalid payment id rejection, payout acceptance/rejection handling,
+  state root commit, proof verification, and nullifier root parse errors.
+
+#### Documentation
+
+- **Protocol and README updates** — Updated adapter counts and listed EMVCo QR
+  support in architecture/protocol documentation.
+
 ### Phase 34 — Gap Analysis Remediation
 
 #### Critical Fixes

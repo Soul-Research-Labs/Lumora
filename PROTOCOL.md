@@ -408,6 +408,6 @@ Pending ──► Challenged ──► Responded ──► Finalized
 
 ### Adapters
 
-13 Bitcoin L2/sidechain adapters implement `RollupBridge` for chain-specific
-RPC communication: Citrea, BOB, BitLayer, Merlin, BEVM, Babylon, Stacks/sBTC,
-RGB, Lightning, Liquid, Ark, Rooch, Bison.
+14 adapters implement `RollupBridge` for chain-specific RPC communication:
+Citrea, BOB, BitLayer, Merlin, BEVM, Babylon, Stacks/sBTC, RGB, Lightning,
+Liquid, Ark, Rooch, Bison, and EMVCo QR.
