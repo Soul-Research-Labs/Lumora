@@ -85,9 +85,34 @@ impl<T: RpcTransport> EmvBridge<T> {
         Ok(())
     }
 
+    fn decode_identifier(
+        &self,
+        identifier: &str,
+        field_name: &str,
+        error_kind: fn(String) -> BridgeError,
+    ) -> Result<Vec<u8>, BridgeError> {
+        let trimmed = identifier.trim();
+        if trimmed.is_empty() {
+            return Err(error_kind(format!("{field_name} must not be empty")));
+        }
+
+        let bytes = hex::decode(trimmed)
+            .map_err(|e| error_kind(format!("bad {field_name}: {e}")))?;
+        if bytes.is_empty() {
+            return Err(error_kind(format!("{field_name} must decode to non-empty bytes")));
+        }
+
+        Ok(bytes)
+    }
+
     /// Query payment status for a specific EMV payment id.
     pub fn get_payment_status(&self, payment_id: &str) -> Result<RpcEmvPaymentStatus, BridgeError> {
         self.validate_config()?;
+        self.decode_identifier(
+            payment_id,
+            "payment_id",
+            BridgeError::ConnectionError,
+        )?;
         let result = self.rpc_call(
             "emv_getPaymentStatus",
             serde_json::json!({
@@ -125,10 +150,18 @@ impl<T: RpcTransport> RollupBridge for EmvBridge<T> {
             .into_iter()
             .filter(|d| d.finality >= self.config.min_finality)
             .map(|d| {
+                if d.amount == 0 {
+                    return Err(BridgeError::DepositRejected(
+                        "bad amount: zero-value deposits are not allowed".into(),
+                    ));
+                }
                 let commitment = hex_to_field(&d.commitment)
                     .map_err(|e| BridgeError::DepositRejected(format!("bad commitment: {e}")))?;
-                let tx_id = hex::decode(&d.payment_id)
-                    .map_err(|e| BridgeError::DepositRejected(format!("bad payment_id: {e}")))?;
+                let tx_id = self.decode_identifier(
+                    &d.payment_id,
+                    "payment_id",
+                    BridgeError::DepositRejected,
+                )?;
 
                 Ok(InboundDeposit {
                     commitment,
@@ -141,6 +174,16 @@ impl<T: RpcTransport> RollupBridge for EmvBridge<T> {
 
     fn execute_withdrawal(&self, withdrawal: &OutboundWithdrawal) -> Result<Vec<u8>, BridgeError> {
         self.validate_config()?;
+        if withdrawal.amount == 0 {
+            return Err(BridgeError::WithdrawFailed(
+                "invalid withdrawal: amount must be greater than zero".into(),
+            ));
+        }
+        if withdrawal.proof_bytes.is_empty() {
+            return Err(BridgeError::WithdrawFailed(
+                "invalid withdrawal: proof_bytes must not be empty".into(),
+            ));
+        }
         let result = self.rpc_call(
             "emv_submitPayout",
             serde_json::json!({
@@ -169,8 +212,11 @@ impl<T: RpcTransport> RollupBridge for EmvBridge<T> {
             )));
         }
 
-        hex::decode(&payout.payout_id)
-            .map_err(|e| BridgeError::WithdrawFailed(format!("invalid payout_id hex: {e}")))
+        self.decode_identifier(
+            &payout.payout_id,
+            "payout_id",
+            BridgeError::WithdrawFailed,
+        )
     }
 
     fn commit_state_root(&self, root: pallas::Base) -> Result<(), BridgeError> {
@@ -331,6 +377,26 @@ mod tests {
     }
 
     #[test]
+    fn mock_poll_deposits_rejects_zero_amount() {
+        let commitment = field_to_hex(&pallas::Base::from(42u64));
+        let transport = MockTransport::new().on(
+            "emv_getSettledQrPayments",
+            serde_json::json!([
+                {
+                    "commitment": commitment,
+                    "amount": 0,
+                    "payment_id": "ab".repeat(32),
+                    "finality": 3
+                }
+            ]),
+        );
+
+        let bridge = EmvBridge::with_transport(EmvConfig::default(), transport);
+        let result = bridge.poll_deposits();
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn mock_execute_withdrawal() {
         let transport = MockTransport::new().on(
             "emv_submitPayout",
@@ -373,6 +439,34 @@ mod tests {
     }
 
     #[test]
+    fn execute_withdrawal_rejects_zero_amount() {
+        let bridge = EmvBridge::new(EmvConfig::default());
+        let wd = OutboundWithdrawal {
+            amount: 0,
+            recipient: [0xAA; 32],
+            proof_bytes: vec![1, 2, 3, 4],
+            nullifiers: [pallas::Base::from(1u64), pallas::Base::from(2u64)],
+        };
+
+        let result = bridge.execute_withdrawal(&wd);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn execute_withdrawal_rejects_empty_proof() {
+        let bridge = EmvBridge::new(EmvConfig::default());
+        let wd = OutboundWithdrawal {
+            amount: 10,
+            recipient: [0xAA; 32],
+            proof_bytes: vec![],
+            nullifiers: [pallas::Base::from(1u64), pallas::Base::from(2u64)],
+        };
+
+        let result = bridge.execute_withdrawal(&wd);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn mock_commit_state_root() {
         let transport = MockTransport::new().on("emv_commitStateRoot", serde_json::json!(true));
         let bridge = EmvBridge::with_transport(EmvConfig::default(), transport);
@@ -407,6 +501,13 @@ mod tests {
         let status = bridge.get_payment_status(&"ab".repeat(32)).unwrap();
         assert_eq!(status.status, "settled");
         assert_eq!(status.finality, 4);
+    }
+
+    #[test]
+    fn get_payment_status_rejects_empty_payment_id() {
+        let bridge = EmvBridge::new(EmvConfig::default());
+        let result = bridge.get_payment_status("");
+        assert!(result.is_err());
     }
 
     #[test]
