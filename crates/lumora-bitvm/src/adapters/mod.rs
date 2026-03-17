@@ -136,7 +136,7 @@ pub(crate) fn sha256(data: &[u8]) -> [u8; 32] {
 
 /// Parse a JSON array of remote nullifier roots, rejecting invalid entries
 /// rather than silently substituting zero values.
-pub(crate) fn parse_remote_nullifier_roots(
+pub fn parse_remote_nullifier_roots(
     entries: Vec<serde_json::Value>,
 ) -> Result<Vec<lumora_contracts::bridge::RemoteNullifierEpochRoot>, lumora_contracts::bridge::BridgeError> {
     entries

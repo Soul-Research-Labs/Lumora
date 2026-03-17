@@ -69,3 +69,8 @@ doc = false
 name = "fuzz_bitvm_adapter_parse"
 path = "fuzz_targets/bitvm_adapter_parse.rs"
 doc = false
+
+[[bin]]
+name = "fuzz_emv_deposit_parse"
+path = "fuzz_targets/emv_deposit_parse.rs"
+doc = false
