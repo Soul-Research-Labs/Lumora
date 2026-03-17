@@ -14,7 +14,7 @@ use lumora_contracts::rollup::{JsonRpcRequest, OfflineTransport, OnChainVerifier
 use super::{bridge_boilerplate, field_to_hex, hex_to_field, parse_remote_nullifier_roots, sha256};
 
 /// Configuration for the EMVCo QR bridge adapter.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmvConfig {
     /// EMV gateway JSON-RPC endpoint.
     pub rpc_url: String,
@@ -26,6 +26,9 @@ pub struct EmvConfig {
     pub min_finality: u64,
     /// Transaction currency code (ISO 4217-style, provider-defined).
     pub currency: String,
+    /// Maximum withdrawal amount allowed per transaction (0 = unlimited).
+    #[serde(default)]
+    pub max_withdrawal_amount: u64,
 }
 
 impl Default for EmvConfig {
@@ -36,6 +39,7 @@ impl Default for EmvConfig {
             merchant_id: String::from("sandbox-merchant"),
             min_finality: 1,
             currency: String::from("BTC"),
+            max_withdrawal_amount: 0,
         }
     }
 }
@@ -47,6 +51,38 @@ pub struct RpcEmvDeposit {
     pub amount: u64,
     pub payment_id: String,
     pub finality: u64,
+}
+
+/// Payout status returned by the EMV gateway for withdrawal execution.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PayoutStatus {
+    /// Gateway accepted the payout.
+    Accepted,
+    /// Gateway has settled the payout.
+    Settled,
+    /// Gateway is still processing.
+    Pending,
+    /// Gateway rejected the payout.
+    Rejected,
+}
+
+impl PayoutStatus {
+    /// Parse a status string case-insensitively.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_ascii_lowercase().as_str() {
+            "accepted" => Some(Self::Accepted),
+            "settled" => Some(Self::Settled),
+            "pending" => Some(Self::Pending),
+            "rejected" => Some(Self::Rejected),
+            _ => None,
+        }
+    }
+
+    /// Returns `true` if the status represents a successful outcome.
+    pub fn is_success(&self) -> bool {
+        matches!(self, Self::Accepted | Self::Settled)
+    }
 }
 
 /// Outbound payout result returned by EMV gateway execution.
@@ -107,6 +143,11 @@ impl<T: RpcTransport> EmvBridge<T> {
     }
 
     /// Query payment status for a specific EMV payment id.
+    ///
+    /// # Errors
+    ///
+    /// Returns `BridgeError::ConnectionError` if the config is invalid, the
+    /// payment ID is malformed, or the gateway RPC call fails.
     pub fn get_payment_status(&self, payment_id: &str) -> Result<RpcEmvPaymentStatus, BridgeError> {
         self.validate_config()?;
         self.decode_identifier(
@@ -180,6 +221,14 @@ impl<T: RpcTransport> RollupBridge for EmvBridge<T> {
                 "invalid withdrawal: amount must be greater than zero".into(),
             ));
         }
+        if self.config.max_withdrawal_amount > 0
+            && withdrawal.amount > self.config.max_withdrawal_amount
+        {
+            return Err(BridgeError::WithdrawFailed(format!(
+                "invalid withdrawal: amount {} exceeds maximum {}",
+                withdrawal.amount, self.config.max_withdrawal_amount
+            )));
+        }
         if withdrawal.proof_bytes.is_empty() {
             return Err(BridgeError::WithdrawFailed(
                 "invalid withdrawal: proof_bytes must not be empty".into(),
@@ -204,9 +253,13 @@ impl<T: RpcTransport> RollupBridge for EmvBridge<T> {
         let payout: RpcEmvWithdrawalResult = serde_json::from_value(result)
             .map_err(|e| BridgeError::WithdrawFailed(format!("parse payout result: {e}")))?;
 
-        if !payout.status.eq_ignore_ascii_case("accepted")
-            && !payout.status.eq_ignore_ascii_case("settled")
-        {
+        let status = PayoutStatus::parse(&payout.status).ok_or_else(|| {
+            BridgeError::WithdrawFailed(format!(
+                "unknown payout status '{}'",
+                payout.status
+            ))
+        })?;
+        if !status.is_success() {
             return Err(BridgeError::WithdrawFailed(format!(
                 "gateway rejected payout with status '{}'",
                 payout.status
@@ -642,5 +695,131 @@ mod tests {
         let bridge = EmvBridge::new(cfg);
         let result = bridge.poll_deposits();
         assert!(result.is_err());
+    }
+
+    // --- PayoutStatus enum tests ---
+
+    #[test]
+    fn payout_status_parse_case_insensitive() {
+        assert_eq!(PayoutStatus::parse("Accepted"), Some(PayoutStatus::Accepted));
+        assert_eq!(PayoutStatus::parse("SETTLED"), Some(PayoutStatus::Settled));
+        assert_eq!(PayoutStatus::parse("pending"), Some(PayoutStatus::Pending));
+        assert_eq!(PayoutStatus::parse("REJECTED"), Some(PayoutStatus::Rejected));
+        assert_eq!(PayoutStatus::parse("unknown"), None);
+    }
+
+    #[test]
+    fn payout_status_is_success() {
+        assert!(PayoutStatus::Accepted.is_success());
+        assert!(PayoutStatus::Settled.is_success());
+        assert!(!PayoutStatus::Pending.is_success());
+        assert!(!PayoutStatus::Rejected.is_success());
+    }
+
+    #[test]
+    fn withdrawal_rejects_unknown_payout_status() {
+        let transport = MockTransport::new().on(
+            "emv_submitPayout",
+            serde_json::json!({
+                "payout_id": "cc".repeat(32),
+                "status": "wut"
+            }),
+        );
+        let bridge = EmvBridge::with_transport(EmvConfig::default(), transport);
+        let wd = OutboundWithdrawal {
+            amount: 100_000,
+            recipient: [0xAA; 32],
+            proof_bytes: vec![1, 2, 3, 4],
+            nullifiers: [pallas::Base::from(1u64), pallas::Base::from(2u64)],
+        };
+        let err = bridge.execute_withdrawal(&wd).unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(msg.contains("unknown payout status"));
+    }
+
+    // --- EmvConfig serde tests ---
+
+    #[test]
+    fn config_roundtrip_serde() {
+        let cfg = EmvConfig::default();
+        let json = serde_json::to_string(&cfg).unwrap();
+        let deserialized: EmvConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.rpc_url, cfg.rpc_url);
+        assert_eq!(deserialized.network_id, cfg.network_id);
+        assert_eq!(deserialized.merchant_id, cfg.merchant_id);
+        assert_eq!(deserialized.min_finality, cfg.min_finality);
+        assert_eq!(deserialized.currency, cfg.currency);
+        assert_eq!(deserialized.max_withdrawal_amount, 0);
+    }
+
+    #[test]
+    fn config_deserialize_without_max_withdrawal_amount() {
+        let json = r#"{
+            "rpc_url": "http://localhost:9400",
+            "network_id": "sandbox",
+            "merchant_id": "test-merchant",
+            "min_finality": 2,
+            "currency": "BTC"
+        }"#;
+        let cfg: EmvConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.max_withdrawal_amount, 0);
+    }
+
+    // --- max_withdrawal_amount tests ---
+
+    #[test]
+    fn withdrawal_rejects_amount_exceeding_max() {
+        let mut cfg = EmvConfig::default();
+        cfg.max_withdrawal_amount = 50_000;
+        let bridge = EmvBridge::new(cfg);
+        let wd = OutboundWithdrawal {
+            amount: 100_000,
+            recipient: [0xAA; 32],
+            proof_bytes: vec![1, 2, 3, 4],
+            nullifiers: [pallas::Base::from(1u64), pallas::Base::from(2u64)],
+        };
+        let err = bridge.execute_withdrawal(&wd).unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(msg.contains("exceeds maximum"));
+    }
+
+    #[test]
+    fn withdrawal_allows_amount_within_max() {
+        let mut cfg = EmvConfig::default();
+        cfg.max_withdrawal_amount = 200_000;
+        let transport = MockTransport::new().on(
+            "emv_submitPayout",
+            serde_json::json!({
+                "payout_id": "cc".repeat(32),
+                "status": "accepted"
+            }),
+        );
+        let bridge = EmvBridge::with_transport(cfg, transport);
+        let wd = OutboundWithdrawal {
+            amount: 100_000,
+            recipient: [0xAA; 32],
+            proof_bytes: vec![1, 2, 3, 4],
+            nullifiers: [pallas::Base::from(1u64), pallas::Base::from(2u64)],
+        };
+        assert!(bridge.execute_withdrawal(&wd).is_ok());
+    }
+
+    #[test]
+    fn withdrawal_unlimited_when_max_is_zero() {
+        let transport = MockTransport::new().on(
+            "emv_submitPayout",
+            serde_json::json!({
+                "payout_id": "cc".repeat(32),
+                "status": "settled"
+            }),
+        );
+        let bridge = EmvBridge::with_transport(EmvConfig::default(), transport);
+        let wd = OutboundWithdrawal {
+            amount: u64::MAX,
+            recipient: [0xAA; 32],
+            proof_bytes: vec![1, 2, 3, 4],
+            nullifiers: [pallas::Base::from(1u64), pallas::Base::from(2u64)],
+        };
+        assert!(bridge.execute_withdrawal(&wd).is_ok());
     }
 }

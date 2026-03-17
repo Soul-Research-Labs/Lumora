@@ -12,6 +12,7 @@ const EMV_NETWORK_ID_ENV: &str = "EMV_NETWORK_ID";
 const EMV_MERCHANT_ID_ENV: &str = "EMV_MERCHANT_ID";
 const EMV_CURRENCY_ENV: &str = "EMV_CURRENCY";
 const EMV_MIN_FINALITY_ENV: &str = "EMV_MIN_FINALITY";
+const EMV_MAX_WITHDRAWAL_ENV: &str = "EMV_MAX_WITHDRAWAL_AMOUNT";
 
 fn apply_emv_bridge_from_env(node: &mut LumoraNode) -> std::io::Result<()> {
     let bridge_type = std::env::var(BRIDGE_TYPE_ENV).unwrap_or_else(|_| "none".to_string());
@@ -59,6 +60,16 @@ fn apply_emv_bridge_from_env(node: &mut LumoraNode) -> std::io::Result<()> {
                 Error::new(
                     ErrorKind::InvalidInput,
                     format!("invalid {EMV_MIN_FINALITY_ENV} '{v}': {e}"),
+                )
+            })?;
+        }
+    }
+    if let Ok(v) = std::env::var(EMV_MAX_WITHDRAWAL_ENV) {
+        if !v.trim().is_empty() {
+            cfg.max_withdrawal_amount = v.parse::<u64>().map_err(|e| {
+                Error::new(
+                    ErrorKind::InvalidInput,
+                    format!("invalid {EMV_MAX_WITHDRAWAL_ENV} '{v}': {e}"),
                 )
             })?;
         }
