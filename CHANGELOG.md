@@ -76,6 +76,34 @@ All notable changes to the Lumora project are documented in this file.
 - Updated architecture and README language to mark EMVCo QR adapter maturity
   as alpha.
 
+### Phase 40 — EMV Config Serialization, Status Typing & Fuzzing
+
+#### Features
+
+- **EmvConfig serde support** — `EmvConfig` now derives `Serialize` and
+  `Deserialize`, enabling file-based configuration loading (e.g., JSON/TOML).
+- **Withdrawal limits** — Added configurable `max_withdrawal_amount` field
+  (0 = unlimited) with `serde(default)` for backward-compatible deserialization.
+- **PayoutStatus enum** — Introduced `PayoutStatus` enum with case-insensitive
+  parsing, replacing raw string comparison for payout result handling.
+- **EMV_MAX_WITHDRAWAL_AMOUNT env var** — RPC bootstrap now reads
+  `EMV_MAX_WITHDRAWAL_AMOUNT` when EMV bridge mode is enabled.
+
+#### Testing
+
+- Added 6 new EMV adapter tests: config serde roundtrip, missing
+  `max_withdrawal_amount` deserialization, `PayoutStatus` parsing variants,
+  withdrawal amount exceeding max, within max, and unlimited (31 total).
+- Added `fuzz_emv_deposit_parse` fuzz target exercising EMV deposit, withdrawal
+  result, payment status, and config JSON deserialization.
+- Added seed corpus entries for the new fuzz target.
+
+#### Documentation
+
+- Added `/// # Errors` annotations to all `RollupBridge` and `OnChainVerifier`
+  impl methods, documenting specific `BridgeError` variants.
+- Promoted `parse_remote_nullifier_roots` to `pub` for fuzz target access.
+
 ### Phase 35 — EMVCo QR Adapter Integration
 
 #### Features

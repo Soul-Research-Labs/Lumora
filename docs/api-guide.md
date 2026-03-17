@@ -23,8 +23,9 @@ prefix (`/v1/deposit`). Prefer the `/v1/` prefix for forward-compatibility.
 | `EMV_NETWORK_ID`       | `sandbox`               | EMV network identifier (used when `LUMORA_BRIDGE_TYPE=emv`)                       |
 | `EMV_MERCHANT_ID`      | `sandbox-merchant`      | EMV merchant identifier (used when `LUMORA_BRIDGE_TYPE=emv`)                      |
 | `EMV_CURRENCY`         | `BTC`                   | EMV payout/deposit currency code (used when `LUMORA_BRIDGE_TYPE=emv`)             |
-| `EMV_MIN_FINALITY`     | `1`                     | Minimum EMV finality threshold for deposit acceptance                             |
-| `RUST_LOG`             | `info`                  | Log level filter                                                                  |
+| `EMV_MIN_FINALITY`          | `1`                     | Minimum EMV finality threshold for deposit acceptance                             |
+| `EMV_MAX_WITHDRAWAL_AMOUNT` | `0` (unlimited)         | Maximum per-withdrawal amount; 0 means no limit (used when `LUMORA_BRIDGE_TYPE=emv`) |
+| `RUST_LOG`                  | `info`                  | Log level filter                                                                  |
 
 ---
 

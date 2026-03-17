@@ -69,8 +69,9 @@ EMV_MIN_FINALITY=1 \
 | `EMV_NETWORK_ID`       | `sandbox`               | EMV network identifier (when `LUMORA_BRIDGE_TYPE=emv`)   |
 | `EMV_MERCHANT_ID`      | `sandbox-merchant`      | EMV merchant identifier (when `LUMORA_BRIDGE_TYPE=emv`)  |
 | `EMV_CURRENCY`         | `BTC`                   | EMV currency code (when `LUMORA_BRIDGE_TYPE=emv`)        |
-| `EMV_MIN_FINALITY`     | `1`                     | Minimum finality threshold for EMV deposit acceptance    |
-| `RUST_LOG`             | _(none)_                | Logging filter (e.g. `info`, `lumora_rpc=debug`)         |
+| `EMV_MIN_FINALITY`          | `1`                     | Minimum finality threshold for EMV deposit acceptance          |
+| `EMV_MAX_WITHDRAWAL_AMOUNT` | `0` (unlimited)         | Maximum per-withdrawal amount (0 = no limit)                   |
+| `RUST_LOG`                  | _(none)_                | Logging filter (e.g. `info`, `lumora_rpc=debug`)               |
 
 > **Note:** `MAX_BODY_SIZE` (2 MB) and `MAX_CONCURRENT_REQUESTS` (128) are
 > compile-time constants in `server.rs`, not configurable via environment
