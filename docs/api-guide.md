@@ -83,6 +83,41 @@ Raw proofs (non-envelope) are accepted for backward compatibility.
 
 ## Endpoints
 
+## Bridge Adapter Contract (Internal)
+
+The BitVM bridge layer includes an EMVCo QR adapter (`EmvBridge`) for payment
+rail interoperability. This is an internal bridge interface (not an HTTP route
+on `lumora-rpc`) and communicates via adapter JSON-RPC methods.
+
+Expected EMV gateway methods:
+
+- `emv_getSettledQrPayments`
+- `emv_getPaymentStatus`
+- `emv_submitPayout`
+- `emv_commitStateRoot`
+- `emv_commitNullifierEpochRoot`
+- `emv_getRemoteNullifierRoots`
+- `emv_verifyProof`
+
+Common required request fields:
+
+- `network_id` (string, non-empty)
+- `merchant_id` (string, non-empty)
+- `currency` (string, non-empty)
+
+Adapter behavior guarantees:
+
+- Local config validation rejects empty `network_id`, `merchant_id`, or
+  `currency`.
+- Deposit polling applies a local `min_finality` filter even if the remote
+  endpoint returns low-finality records.
+- Withdrawal accepts payout status values `accepted` and `settled`
+  case-insensitively; all other statuses are rejected.
+- Nullifier root parsing uses strict validation and returns
+  `BridgeError::NullifierSyncFailed` on malformed records.
+
+---
+
 ### Health
 
 ```

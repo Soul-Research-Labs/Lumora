@@ -4,6 +4,29 @@ All notable changes to the Lumora project are documented in this file.
 
 ## [Unreleased]
 
+### Phase 36 — EMV Adapter Hardening
+
+#### Features
+
+- **Config guardrails** — `EmvBridge` now enforces non-empty `network_id`,
+  `merchant_id`, and `currency` before issuing gateway calls.
+- **Finality enforcement** — Deposit polling applies a local `min_finality`
+  filter, preventing low-finality records from being accepted even if the
+  gateway returns them.
+- **Status normalization** — Payout statuses `accepted`/`settled` are handled
+  case-insensitively; other statuses remain rejected.
+
+#### Testing
+
+- Added EMV adapter tests for: low-finality filtering, empty merchant config
+  rejection, `get_payment_status`, `verify_proof=false`,
+  `commit_nullifier_epoch_root`, and successful remote nullifier root parsing.
+
+#### Documentation
+
+- Added EMV adapter JSON-RPC contract section to `docs/api-guide.md`.
+- Updated `docs/architecture.md` adapter inventory to include EMVCo QR.
+
 ### Phase 35 — EMVCo QR Adapter Integration
 
 #### Features
