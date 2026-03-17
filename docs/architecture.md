@@ -63,20 +63,20 @@ Key design principles:
 
 ## Crate Responsibilities
 
-| Crate               | Role                                                                                                                                                                   |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lumora-primitives` | Poseidon hash, field utilities, domain-separated nullifiers (V2), fixed-size proof envelopes, serde helpers                                                            |
-| `lumora-note`       | Note model, spending/viewing keys, ECIES encryption, BIP39 mnemonics, stealth addresses (ECDH one-time keys)                                                           |
-| `lumora-tree`       | Depth-32 incremental Merkle tree with append and pruning                                                                                                               |
-| `lumora-circuits`   | Halo2 transfer and withdraw circuits, constraint definitions, domain-aware witness inputs                                                                              |
-| `lumora-prover`     | Proof generation engine, parallel proving, proof pipeline, proof envelope wrapping                                                                                     |
-| `lumora-verifier`   | Proof verification, batch verification, versioned verifier sets                                                                                                        |
-| `lumora-contracts`  | Privacy pool state, deposit/transfer/withdraw logic, WAL, snapshots, events, compliance, governance, incentives, epoch management                                      |
-| `lumora-node`       | Node daemon, mempool, peer registry, sync protocol, Byzantine detection, batch accumulator, cross-chain bridge/rollup sync                                             |
-| `lumora-client`     | HTTP client for the RPC API                                                                                                                                            |
-| `lumora-sdk`        | High-level SDK: wallets, transaction history, note management, stealth sends                                                                                           |
-| `lumora-cli`        | Interactive REPL with wallet encryption and key management                                                                                                             |
-| `lumora-rpc`        | Axum HTTP server, route handlers, relay jitter middleware, background tasks (batch/epoch loops), stealth-scan, epoch-roots                                             |
+| Crate               | Role                                                                                                                                                                                    |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lumora-primitives` | Poseidon hash, field utilities, domain-separated nullifiers (V2), fixed-size proof envelopes, serde helpers                                                                             |
+| `lumora-note`       | Note model, spending/viewing keys, ECIES encryption, BIP39 mnemonics, stealth addresses (ECDH one-time keys)                                                                            |
+| `lumora-tree`       | Depth-32 incremental Merkle tree with append and pruning                                                                                                                                |
+| `lumora-circuits`   | Halo2 transfer and withdraw circuits, constraint definitions, domain-aware witness inputs                                                                                               |
+| `lumora-prover`     | Proof generation engine, parallel proving, proof pipeline, proof envelope wrapping                                                                                                      |
+| `lumora-verifier`   | Proof verification, batch verification, versioned verifier sets                                                                                                                         |
+| `lumora-contracts`  | Privacy pool state, deposit/transfer/withdraw logic, WAL, snapshots, events, compliance, governance, incentives, epoch management                                                       |
+| `lumora-node`       | Node daemon, mempool, peer registry, sync protocol, Byzantine detection, batch accumulator, cross-chain bridge/rollup sync                                                              |
+| `lumora-client`     | HTTP client for the RPC API                                                                                                                                                             |
+| `lumora-sdk`        | High-level SDK: wallets, transaction history, note management, stealth sends                                                                                                            |
+| `lumora-cli`        | Interactive REPL with wallet encryption and key management                                                                                                                              |
+| `lumora-rpc`        | Axum HTTP server, route handlers, relay jitter middleware, background tasks (batch/epoch loops), stealth-scan, epoch-roots                                                              |
 | `lumora-bitvm`      | BitVM2 bridge: `BitvmBridge` (operator withdrawals, state root commits), `BitvmVerifier` (optimistic verification), challenger, 14 adapters (13 Bitcoin L2 production + EMVCo QR alpha) |
 
 ## Data Flow: Private Transfer
