@@ -44,6 +44,15 @@ queries.
 
 # Custom address
 LUMORA_RPC_ADDR=0.0.0.0:8080 ./target/release/lumora-rpc
+
+# EMV bridge mode
+LUMORA_BRIDGE_TYPE=emv \
+EMV_RPC_URL=http://127.0.0.1:9400 \
+EMV_NETWORK_ID=sandbox \
+EMV_MERCHANT_ID=sandbox-merchant \
+EMV_CURRENCY=BTC \
+EMV_MIN_FINALITY=1 \
+./target/release/lumora-rpc
 ```
 
 ### Environment variables
@@ -51,10 +60,16 @@ LUMORA_RPC_ADDR=0.0.0.0:8080 ./target/release/lumora-rpc
 | Variable               | Default          | Description                                      |
 | ---------------------- | ---------------- | ------------------------------------------------ |
 | `LUMORA_RPC_ADDR`      | `127.0.0.1:3030` | Listen address (`host:port`)                     |
+| `LUMORA_BRIDGE_TYPE`   | `none`           | Bridge backend selection: `none`, `local`, `emv` |
 | `LUMORA_API_KEY`       | _(none)_         | API key for `X-API-Key` authentication           |
 | `LUMORA_DATA_DIR`      | `./lumora_data`  | Data directory (SRS cache, state, WAL)           |
 | `LUMORA_JITTER_MIN_MS` | `50`             | Relay jitter minimum delay (ms)                  |
 | `LUMORA_JITTER_MAX_MS` | `500`            | Relay jitter maximum delay (ms)                  |
+| `EMV_RPC_URL`          | `http://127.0.0.1:9400` | EMV gateway JSON-RPC URL (when `LUMORA_BRIDGE_TYPE=emv`) |
+| `EMV_NETWORK_ID`       | `sandbox`        | EMV network identifier (when `LUMORA_BRIDGE_TYPE=emv`) |
+| `EMV_MERCHANT_ID`      | `sandbox-merchant` | EMV merchant identifier (when `LUMORA_BRIDGE_TYPE=emv`) |
+| `EMV_CURRENCY`         | `BTC`            | EMV currency code (when `LUMORA_BRIDGE_TYPE=emv`) |
+| `EMV_MIN_FINALITY`     | `1`              | Minimum finality threshold for EMV deposit acceptance |
 | `RUST_LOG`             | _(none)_         | Logging filter (e.g. `info`, `lumora_rpc=debug`) |
 
 > **Note:** `MAX_BODY_SIZE` (2 MB) and `MAX_CONCURRENT_REQUESTS` (128) are

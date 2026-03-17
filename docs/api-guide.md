@@ -11,14 +11,20 @@ prefix (`/v1/deposit`). Prefer the `/v1/` prefix for forward-compatibility.
 
 ## Configuration
 
-| Variable               | Default          | Description                                                                       |
-| ---------------------- | ---------------- | --------------------------------------------------------------------------------- |
-| `LUMORA_RPC_ADDR`      | `127.0.0.1:3030` | Listen address                                                                    |
-| `LUMORA_API_KEY`       | _(unset)_        | API key for request authentication                                                |
-| `LUMORA_CORS_ORIGINS`  | _(unset)_        | Comma-separated CORS origins (e.g. `https://app.lumora.io,http://localhost:5173`) |
-| `LUMORA_JITTER_MIN_MS` | `50`             | Relay jitter minimum delay in milliseconds                                        |
-| `LUMORA_JITTER_MAX_MS` | `500`            | Relay jitter maximum delay in milliseconds                                        |
-| `RUST_LOG`             | `info`           | Log level filter                                                                  |
+| Variable               | Default                 | Description                                                                       |
+| ---------------------- | ----------------------- | --------------------------------------------------------------------------------- |
+| `LUMORA_RPC_ADDR`      | `127.0.0.1:3030`        | Listen address                                                                    |
+| `LUMORA_BRIDGE_TYPE`   | `none`                  | Bridge backend selection: `none`, `local`, or `emv`                               |
+| `LUMORA_API_KEY`       | _(unset)_               | API key for request authentication                                                |
+| `LUMORA_CORS_ORIGINS`  | _(unset)_               | Comma-separated CORS origins (e.g. `https://app.lumora.io,http://localhost:5173`) |
+| `LUMORA_JITTER_MIN_MS` | `50`                    | Relay jitter minimum delay in milliseconds                                        |
+| `LUMORA_JITTER_MAX_MS` | `500`                   | Relay jitter maximum delay in milliseconds                                        |
+| `EMV_RPC_URL`          | `http://127.0.0.1:9400` | EMV gateway JSON-RPC URL (used when `LUMORA_BRIDGE_TYPE=emv`)                     |
+| `EMV_NETWORK_ID`       | `sandbox`               | EMV network identifier (used when `LUMORA_BRIDGE_TYPE=emv`)                       |
+| `EMV_MERCHANT_ID`      | `sandbox-merchant`      | EMV merchant identifier (used when `LUMORA_BRIDGE_TYPE=emv`)                      |
+| `EMV_CURRENCY`         | `BTC`                   | EMV payout/deposit currency code (used when `LUMORA_BRIDGE_TYPE=emv`)             |
+| `EMV_MIN_FINALITY`     | `1`                     | Minimum EMV finality threshold for deposit acceptance                             |
+| `RUST_LOG`             | `info`                  | Log level filter                                                                  |
 
 ---
 

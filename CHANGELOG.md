@@ -29,6 +29,23 @@ All notable changes to the Lumora project are documented in this file.
 - Added dedicated `docs/emv-bridge.md` integration guide with JSON-RPC
   examples, validation rules, and Lumora type mapping.
 
+### Phase 37 — EMV Runtime Bootstrap
+
+#### Features
+
+- **Runtime bridge selection** — `lumora-rpc` now supports
+  `LUMORA_BRIDGE_TYPE` with explicit `emv` selection in the binary entrypoint.
+- **EMV env config bootstrap** — RPC startup now reads `EMV_RPC_URL`,
+  `EMV_NETWORK_ID`, `EMV_MERCHANT_ID`, `EMV_CURRENCY`, and
+  `EMV_MIN_FINALITY` when EMV bridge mode is enabled.
+- **Startup validation** — Invalid bridge type and malformed
+  `EMV_MIN_FINALITY` values now fail fast with descriptive startup errors.
+
+#### Documentation
+
+- Updated deployment and API configuration docs with bridge selection and EMV
+  environment variable references.
+
 ### Phase 35 — EMVCo QR Adapter Integration
 
 #### Features
