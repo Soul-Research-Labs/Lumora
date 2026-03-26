@@ -54,6 +54,12 @@ pub fn encrypt_note(
     randomness: pallas::Scalar,
     mut rng: impl RngCore,
 ) -> Option<([u8; 32], Vec<u8>)> {
+    // Reject the identity point — encrypting to it would produce a
+    // deterministic shared secret, breaking confidentiality.
+    if bool::from(recipient_pk.is_identity()) {
+        return None;
+    }
+
     // Generate ephemeral key pair.
     let eph_sk = pallas::Scalar::random(&mut rng);
     let eph_pk = pallas::Point::generator() * eph_sk;
