@@ -233,6 +233,16 @@ impl IncrementalMerkleTree {
         let left = self.node_hash(left_child, level - 1);
         let right = self.node_hash(right_child, level - 1);
         let hash = poseidon::hash_two(left, right);
+
+        // Cap the cache to prevent unbounded memory growth. When the limit is
+        // reached, prune spent-subtree entries; if still over, clear entirely.
+        const MAX_NODE_CACHE: usize = 100_000;
+        if self.node_cache.len() >= MAX_NODE_CACHE {
+            self.prune_cache();
+            if self.node_cache.len() >= MAX_NODE_CACHE {
+                self.node_cache.clear();
+            }
+        }
         self.node_cache.insert((node_index, level), hash);
         hash
     }
