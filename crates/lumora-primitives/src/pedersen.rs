@@ -16,6 +16,7 @@
 use ff::PrimeField;
 use group::{Group, GroupEncoding};
 use pasta_curves::pallas;
+use std::sync::OnceLock;
 
 use crate::poseidon;
 
@@ -65,8 +66,9 @@ pub fn generator_h() -> pallas::Point {
 ///
 /// Both `value` and `randomness` are Pallas scalars (Fq).
 pub fn commit(value: pallas::Scalar, randomness: pallas::Scalar) -> pallas::Point {
+    static H: OnceLock<pallas::Point> = OnceLock::new();
     let g = generator_g();
-    let h = generator_h();
+    let h = *H.get_or_init(generator_h);
     g * value + h * randomness
 }
 
