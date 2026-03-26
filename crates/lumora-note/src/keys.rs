@@ -65,7 +65,15 @@ impl SpendingKey {
     }
 
     /// Create from a known scalar (for testing / deserialization).
+    ///
+    /// # Panics
+    /// Panics if `s` is zero — a zero scalar produces the identity point,
+    /// which breaks all downstream cryptographic operations.
     pub fn from_scalar(s: pallas::Scalar) -> Self {
+        assert!(
+            !bool::from(s.is_zero()),
+            "spending key must be a non-zero scalar"
+        );
         Self(s)
     }
 
