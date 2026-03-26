@@ -301,13 +301,14 @@ impl DepositFinalityTracker {
     }
 
     /// Register a deposit observed at the given block height.
-    /// Ignores duplicates (same tx_id already pending or seen at higher height)
-    /// to prevent re-org double-finalization.
+    /// On re-observation (re-org), updates the height to the maximum seen
+    /// so the finality countdown never under-counts confirmations.
     pub fn observe(&mut self, tx_id: Vec<u8>, block_height: u64) {
-        // Only add if this tx_id has not already been observed.
-        if !self.pending.iter().any(|(id, _)| id == &tx_id) {
-            // Reject heights clearly below any already-seen height for this tx
-            // to guard against re-org replay at a lower block height.
+        if let Some(entry) = self.pending.iter_mut().find(|(id, _)| id == &tx_id) {
+            // Re-org: update to the highest observed height to avoid
+            // premature finality from stale lower heights.
+            entry.1 = entry.1.max(block_height);
+        } else {
             self.pending.push((tx_id, block_height));
         }
     }
