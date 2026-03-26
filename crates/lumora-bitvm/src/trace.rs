@@ -87,10 +87,11 @@ pub fn step_leaf_hash(step: &TraceStep) -> [u8; 32] {
 ///
 /// Uses a binary SHA-256 tree, padding to the next power of 2 with
 /// zero-filled leaves.
+///
+/// # Panics
+/// Panics if `leaves` is empty — an empty trace is not a valid assertion.
 pub fn compute_trace_merkle_root(leaves: &[[u8; 32]]) -> [u8; 32] {
-    if leaves.is_empty() {
-        return [0u8; 32];
-    }
+    assert!(!leaves.is_empty(), "trace must contain at least one step");
     if leaves.len() == 1 {
         return leaves[0];
     }
@@ -648,9 +649,9 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "trace must contain at least one step")]
     fn test_empty_merkle_root() {
-        let root = compute_trace_merkle_root(&[]);
-        assert_eq!(root, [0u8; 32]);
+        compute_trace_merkle_root(&[]);
     }
 
     #[test]
