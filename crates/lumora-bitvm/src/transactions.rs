@@ -246,14 +246,18 @@ pub struct DisproveTxParams {
 pub fn build_disprove_tx(params: &DisproveTxParams) -> Result<Transaction, BridgeError> {
     let disprove_script = build_disprove_script(params.step_kind);
 
-    // Build the witness stack:
-    // <step_witness> <claimed_output_hash> <input_hash> <script> <control_block>
+    // Build the witness stack (bottom-to-top):
+    // <claimed_output_hash> <input_hash> <step_witness> <script> <control_block>
+    //
+    // The disprove script starts with stack (bottom ← top):
+    //   <expected_output> <input_hash> <witness>
+    // so we push them in that order.
     let script_bytes = serialize_script_fragment(&disprove_script);
     let control_block = build_control_block(&params.operator_pubkey, &params.taproot_tree, &disprove_script);
     let witness = vec![
+        params.claimed_output_hash.to_vec(),
         params.input_hash.to_vec(),
         params.witness.clone(),
-        params.claimed_output_hash.to_vec(),
         script_bytes,
         control_block,
     ];
