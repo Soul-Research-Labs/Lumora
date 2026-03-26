@@ -75,9 +75,14 @@ pub struct VerificationTrace {
 // Trace Merkle tree — SHA-256 binary tree over step commitments
 // ---------------------------------------------------------------------------
 
-/// Compute the leaf hash for a trace step: `SHA256(input_hash || output_hash)`.
+/// Compute the leaf hash for a trace step:
+/// `SHA256(step_kind_tag || input_hash || output_hash)`.
+///
+/// Including the step kind tag prevents an attacker from substituting a
+/// different step kind while reusing the same input/output hashes.
 pub fn step_leaf_hash(step: &TraceStep) -> [u8; 32] {
     let mut hasher = Sha256::new();
+    hasher.update(crate::script::step_kind_tag(step.kind));
     hasher.update(step.input_hash);
     hasher.update(step.output_hash);
     hasher.finalize().into()
