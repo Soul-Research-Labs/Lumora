@@ -68,7 +68,10 @@ pub mod base_array {
     pub fn deserialize<'de, D: serde::Deserializer<'de>, const N: usize>(
         d: D,
     ) -> Result<[pallas::Base; N], D::Error> {
-        let vecs: Vec<Vec<u8>> = serde::Deserialize::deserialize(d)?;
+        // Deserialize as Vec<[u8; 32]> instead of Vec<Vec<u8>> to bound the
+        // allocation per element to exactly 32 bytes, preventing an attacker
+        // from supplying arbitrarily large inner byte arrays.
+        let vecs: Vec<[u8; 32]> = serde::Deserialize::deserialize(d)?;
         if vecs.len() != N {
             return Err(serde::de::Error::custom(format!(
                 "expected {} elements, got {}",
@@ -77,13 +80,8 @@ pub mod base_array {
             )));
         }
         let mut result = [pallas::Base::zero(); N];
-        for (i, bytes) in vecs.iter().enumerate() {
-            if bytes.len() != 32 {
-                return Err(serde::de::Error::custom("expected 32 bytes per element"));
-            }
-            let mut arr = [0u8; 32];
-            arr.copy_from_slice(bytes);
-            let opt: Option<pallas::Base> = pallas::Base::from_repr(arr).into();
+        for (i, arr) in vecs.iter().enumerate() {
+            let opt: Option<pallas::Base> = pallas::Base::from_repr(*arr).into();
             result[i] = opt.ok_or_else(|| serde::de::Error::custom("invalid pallas::Base"))?;
         }
         Ok(result)
@@ -110,15 +108,10 @@ pub mod base_vec {
     pub fn deserialize<'de, D: serde::Deserializer<'de>>(
         d: D,
     ) -> Result<Vec<pallas::Base>, D::Error> {
-        let vecs: Vec<Vec<u8>> = serde::Deserialize::deserialize(d)?;
+        let vecs: Vec<[u8; 32]> = serde::Deserialize::deserialize(d)?;
         let mut result = Vec::with_capacity(vecs.len());
-        for bytes in &vecs {
-            if bytes.len() != 32 {
-                return Err(serde::de::Error::custom("expected 32 bytes per element"));
-            }
-            let mut arr = [0u8; 32];
-            arr.copy_from_slice(bytes);
-            let opt: Option<pallas::Base> = pallas::Base::from_repr(arr).into();
+        for arr in &vecs {
+            let opt: Option<pallas::Base> = pallas::Base::from_repr(*arr).into();
             result.push(opt.ok_or_else(|| serde::de::Error::custom("invalid pallas::Base"))?);
         }
         Ok(result)
