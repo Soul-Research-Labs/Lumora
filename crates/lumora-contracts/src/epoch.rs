@@ -162,7 +162,7 @@ fn compute_nullifier_epoch_root(nullifiers: &[pallas::Base]) -> pallas::Base {
         return pallas::Base::zero();
     }
     if nullifiers.len() == 1 {
-        return nullifiers[0];
+        return poseidon::hash_two(nullifiers[0], pallas::Base::zero());
     }
 
     // Pad to next power of two.

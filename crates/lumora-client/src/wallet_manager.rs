@@ -205,6 +205,11 @@ impl WalletManager {
     }
 
     fn wallet_path(&self, label: &str) -> PathBuf {
+        assert!(
+            !label.contains('/') && !label.contains('\\')
+            && !label.contains("..") && !label.is_empty(),
+            "invalid wallet label"
+        );
         self.base_dir.join(format!("{}.json", label))
     }
 

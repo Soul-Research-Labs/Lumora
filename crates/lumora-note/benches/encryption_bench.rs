@@ -22,7 +22,8 @@ fn bench_decrypt_note(c: &mut Criterion) {
     let recipient_pk = pallas::Point::generator() * recipient_sk;
     let randomness = pallas::Scalar::random(OsRng);
 
-    let (eph_pk_bytes, ciphertext) = encrypt_note(recipient_pk, 1000, 0, randomness, OsRng);
+    let (eph_pk_bytes, ciphertext) = encrypt_note(recipient_pk, 1000, 0, randomness, OsRng)
+        .expect("encrypt should succeed");
 
     c.bench_function("decrypt_note", |b| {
         b.iter(|| {
@@ -39,7 +40,8 @@ fn bench_encrypt_decrypt_roundtrip(c: &mut Criterion) {
     c.bench_function("encrypt_decrypt_roundtrip", |b| {
         b.iter(|| {
             let randomness = pallas::Scalar::random(OsRng);
-            let (eph_pk_bytes, ciphertext) = encrypt_note(recipient_pk, 500, 1, randomness, OsRng);
+            let (eph_pk_bytes, ciphertext) = encrypt_note(recipient_pk, 500, 1, randomness, OsRng)
+                .expect("encrypt should succeed");
             let result = decrypt_note(recipient_sk, &eph_pk_bytes, &ciphertext);
             assert!(result.is_some());
         });

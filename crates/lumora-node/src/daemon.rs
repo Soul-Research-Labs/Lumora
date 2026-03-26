@@ -269,11 +269,13 @@ impl LumoraNode {
         let deposits = bridge.poll_deposits()?;
         let count = deposits.len();
         for dep in &deposits {
-            let _ = self.pool.deposit(&DepositRequest {
+            match self.pool.deposit(&DepositRequest {
                 commitment: dep.commitment,
                 amount: dep.amount,
-            });
-            self.tree.insert(dep.commitment);
+            }) {
+                Ok(_) => { self.tree.insert(dep.commitment); }
+                Err(e) => { eprintln!("bridge deposit failed: {e}"); }
+            }
         }
         Ok(count)
     }

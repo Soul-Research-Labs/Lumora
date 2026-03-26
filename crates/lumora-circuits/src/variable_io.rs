@@ -108,9 +108,9 @@ pub struct VariableTransferWitness {
 impl VariableTransferWitness {
     /// Verify that value conservation holds: sum(inputs) == sum(outputs) + fee.
     pub fn check_conservation(&self) -> bool {
-        let in_sum: u64 = self.input_values.iter().sum();
-        let out_sum: u64 = self.output_values.iter().sum();
-        in_sum == out_sum.saturating_add(self.fee)
+        let in_sum: u128 = self.input_values.iter().map(|&v| v as u128).sum();
+        let out_sum: u128 = self.output_values.iter().map(|&v| v as u128).sum();
+        in_sum == out_sum + self.fee as u128
     }
 
     /// Return the padded input values (with zeros for dummy slots).

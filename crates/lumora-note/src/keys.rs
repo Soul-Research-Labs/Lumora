@@ -292,18 +292,20 @@ pub struct StealthMeta {
 pub fn stealth_send(
     recipient_pk: pallas::Point,
     rng: impl RngCore,
-) -> (pallas::Base, StealthMeta) {
+) -> Option<(pallas::Base, StealthMeta)> {
     use group::Curve;
     let r = pallas::Scalar::random(rng);
     let ephemeral_pk = (pallas::Point::generator() * r).to_affine();
     let shared = recipient_pk * r;
-    let shared_x = *shared.to_affine().coordinates()
-        .expect("ECDH shared point is not identity").x();
+    let shared_coords = shared.to_affine().coordinates();
+    if bool::from(shared_coords.is_none()) { return None; }
+    let shared_x = *shared_coords.expect("is_some was true").x();
     let tweak = lumora_primitives::poseidon::hash_one(shared_x);
 
     let recipient_affine = recipient_pk.to_affine();
-    let recip_x = *recipient_affine.coordinates()
-        .expect("recipient public key is not identity").x();
+    let recip_coords = recipient_affine.coordinates();
+    if bool::from(recip_coords.is_none()) { return None; }
+    let recip_x = *recip_coords.expect("is_some was true").x();
     let one_time_owner =
         lumora_primitives::poseidon::hash_two(recip_x, tweak);
 
@@ -311,7 +313,7 @@ pub fn stealth_send(
         ephemeral_pk,
         one_time_owner,
     };
-    (one_time_owner, meta)
+    Some((one_time_owner, meta))
 }
 
 impl SpendingKey {
@@ -323,12 +325,14 @@ impl SpendingKey {
         use group::Curve;
         use subtle::ConstantTimeEq;
         let shared = pallas::Point::from(meta.ephemeral_pk) * self.0;
-        let shared_x = *shared.to_affine().coordinates()
-            .expect("ECDH shared point is not identity").x();
+        let shared_coords = shared.to_affine().coordinates();
+        if bool::from(shared_coords.is_none()) { return None; }
+        let shared_x = *shared_coords.expect("is_some was true").x();
         let tweak = lumora_primitives::poseidon::hash_one(shared_x);
 
-        let my_pk_x = *self.public_key().to_affine().coordinates()
-            .expect("own public key is not identity").x();
+        let my_pk_coords = self.public_key().to_affine().coordinates();
+        if bool::from(my_pk_coords.is_none()) { return None; }
+        let my_pk_x = *my_pk_coords.expect("is_some was true").x();
         let expected_owner =
             lumora_primitives::poseidon::hash_two(my_pk_x, tweak);
 
@@ -355,8 +359,11 @@ mod point_serde {
     }
 
     pub fn serialize<S: Serializer>(pt: &pallas::Affine, s: S) -> Result<S::Ok, S::Error> {
-        let coords = pt.coordinates()
-            .expect("serialized affine point is not identity");
+        let coords = pt.coordinates();
+        if bool::from(coords.is_none()) {
+            return Err(serde::ser::Error::custom("cannot serialize identity point"));
+        }
+        let coords = coords.expect("is_some was true");
         let rep = AffineRep {
             x: coords.x().to_repr(),
             y: coords.y().to_repr(),
@@ -387,16 +394,24 @@ mod point_serde {
 pub fn scalar_to_base(s: pallas::Scalar) -> pallas::Base {
     let repr = s.to_repr();
     pallas::Base::from_repr(repr).unwrap_or_else(|| {
-        // If the scalar exceeds Fp, reduce by hashing.
-        // repr is always 32 bytes from to_repr(), so these slices are safe.
-        let lo = u64::from_le_bytes(repr[0..8].try_into()
+        // If the scalar exceeds Fp, reduce by hashing all 32 bytes.
+        let a = u64::from_le_bytes(repr[0..8].try_into()
             .expect("repr is 32 bytes"));
-        let hi = u64::from_le_bytes(repr[8..16].try_into()
+        let b = u64::from_le_bytes(repr[8..16].try_into()
             .expect("repr is 32 bytes"));
-        lumora_primitives::poseidon::hash_two(
-            pallas::Base::from(lo),
-            pallas::Base::from(hi),
-        )
+        let c = u64::from_le_bytes(repr[16..24].try_into()
+            .expect("repr is 32 bytes"));
+        let d = u64::from_le_bytes(repr[24..32].try_into()
+            .expect("repr is 32 bytes"));
+        let left = lumora_primitives::poseidon::hash_two(
+            pallas::Base::from(a),
+            pallas::Base::from(b),
+        );
+        let right = lumora_primitives::poseidon::hash_two(
+            pallas::Base::from(c),
+            pallas::Base::from(d),
+        );
+        lumora_primitives::poseidon::hash_two(left, right)
     })
 }
 
@@ -476,7 +491,7 @@ mod tests {
     fn stealth_roundtrip_recipient_can_detect() {
         let recipient = SpendingKey::random(OsRng);
         let recipient_pk = recipient.public_key();
-        let (_owner, meta) = stealth_send(recipient_pk, OsRng);
+        let (_owner, meta) = stealth_send(recipient_pk, OsRng).unwrap();
         assert!(recipient.stealth_receive(&meta).is_some());
     }
 
@@ -485,7 +500,7 @@ mod tests {
         let recipient = SpendingKey::random(OsRng);
         let bystander = SpendingKey::random(OsRng);
         let recipient_pk = recipient.public_key();
-        let (_owner, meta) = stealth_send(recipient_pk, OsRng);
+        let (_owner, meta) = stealth_send(recipient_pk, OsRng).unwrap();
         assert!(bystander.stealth_receive(&meta).is_none());
     }
 
@@ -493,7 +508,7 @@ mod tests {
     fn stealth_owner_matches_meta() {
         let recipient = SpendingKey::random(OsRng);
         let recipient_pk = recipient.public_key();
-        let (owner, meta) = stealth_send(recipient_pk, OsRng);
+        let (owner, meta) = stealth_send(recipient_pk, OsRng).unwrap();
         assert_eq!(owner, meta.one_time_owner);
         let detected = recipient.stealth_receive(&meta).unwrap();
         assert_eq!(detected, owner);
@@ -503,8 +518,8 @@ mod tests {
     fn stealth_different_sends_produce_different_owners() {
         let recipient = SpendingKey::random(OsRng);
         let pk = recipient.public_key();
-        let (owner1, _) = stealth_send(pk, OsRng);
-        let (owner2, _) = stealth_send(pk, OsRng);
+        let (owner1, _) = stealth_send(pk, OsRng).unwrap();
+        let (owner2, _) = stealth_send(pk, OsRng).unwrap();
         // Overwhelmingly likely to differ due to different ephemeral keys
         assert_ne!(owner1, owner2);
     }
@@ -512,7 +527,7 @@ mod tests {
     #[test]
     fn stealth_meta_serde_roundtrip() {
         let recipient = SpendingKey::random(OsRng);
-        let (_, meta) = stealth_send(recipient.public_key(), OsRng);
+        let (_, meta) = stealth_send(recipient.public_key(), OsRng).unwrap();
         let json = serde_json::to_string(&meta).unwrap();
         let meta2: StealthMeta = serde_json::from_str(&json).unwrap();
         assert_eq!(meta.one_time_owner, meta2.one_time_owner);

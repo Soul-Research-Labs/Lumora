@@ -303,7 +303,7 @@ pub fn replay_event(state: &mut PrivacyPoolState, event: &PoolEvent) {
             commitment, amount, ..
         } => {
             state.insert_commitment(*commitment);
-            state.pool_balance += amount;
+            state.pool_balance = state.pool_balance.saturating_add(*amount);
             state.emit_event(event.clone());
         }
         PoolEvent::Transfer {

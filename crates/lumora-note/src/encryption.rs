@@ -53,7 +53,7 @@ pub fn encrypt_note(
     asset: u64,
     randomness: pallas::Scalar,
     mut rng: impl RngCore,
-) -> ([u8; 32], Vec<u8>) {
+) -> Option<([u8; 32], Vec<u8>)> {
     // Generate ephemeral key pair.
     let eph_sk = pallas::Scalar::random(&mut rng);
     let eph_pk = pallas::Point::generator() * eph_sk;
@@ -62,7 +62,7 @@ pub fn encrypt_note(
     let shared_point = recipient_pk * eph_sk;
 
     // Derive 32-byte symmetric key via SHA-256.
-    let key = derive_key(&shared_point);
+    let key = derive_key(&shared_point)?;
 
     // Serialize the note plaintext.
     let mut plaintext = [0u8; NOTE_PLAINTEXT_SIZE];
@@ -80,7 +80,7 @@ pub fn encrypt_note(
     // Serialize ephemeral public key.
     let eph_pk_bytes = point_to_bytes(&eph_pk);
 
-    (eph_pk_bytes, ciphertext)
+    Some((eph_pk_bytes, ciphertext))
 }
 
 /// Decrypt a note using the recipient's spending key.
@@ -109,7 +109,7 @@ pub fn decrypt_note(
     let shared_point = eph_pk * spending_key;
 
     // Derive the same symmetric key.
-    let key = derive_key(&shared_point);
+    let key = derive_key(&shared_point)?;
 
     // Decrypt and authenticate with ChaCha20-Poly1305.
     let cipher = ChaCha20Poly1305::new((&key).into());
@@ -133,19 +133,18 @@ pub fn decrypt_note(
 }
 
 /// Derive a 32-byte symmetric key from a shared ECDH point via SHA-256.
-fn derive_key(shared_point: &pallas::Point) -> [u8; 32] {
+fn derive_key(shared_point: &pallas::Point) -> Option<[u8; 32]> {
     let affine = pallas::Affine::from(*shared_point);
     let ct_coords = affine.coordinates();
-    let x_bytes: [u8; 32] = if bool::from(ct_coords.is_some()) {
-        ct_coords.expect("is_some was true").x().to_repr()
-    } else {
-        [0u8; 32]
-    };
+    if bool::from(ct_coords.is_none()) {
+        return None;
+    }
+    let x_bytes: [u8; 32] = ct_coords.expect("is_some was true").x().to_repr();
 
     let mut hasher = Sha256::new();
     hasher.update(b"lumora-note-encryption-v2");
     hasher.update(x_bytes);
-    hasher.finalize().into()
+    Some(hasher.finalize().into())
 }
 
 /// Serialize a Pallas point to 32 bytes (x-coordinate + y-parity bit).
@@ -224,7 +223,8 @@ mod tests {
         let randomness = pallas::Scalar::from(12345u64);
 
         // Full end-to-end roundtrip using the public API.
-        let (eph_pk_bytes, ciphertext) = encrypt_note(pk, value, asset, randomness, &mut rng);
+        let (eph_pk_bytes, ciphertext) = encrypt_note(pk, value, asset, randomness, &mut rng)
+            .expect("encrypt_note should succeed for valid point");
         let (dec_value, dec_asset, dec_randomness) =
             decrypt_note(sk, &eph_pk_bytes, &ciphertext).expect("decryption should succeed");
 
@@ -257,7 +257,8 @@ mod tests {
         let pk = pallas::Point::generator() * sk;
 
         let (_, ciphertext) =
-            encrypt_note(pk, 100, 0, pallas::Scalar::from(1u64), &mut rng);
+            encrypt_note(pk, 100, 0, pallas::Scalar::from(1u64), &mut rng)
+            .expect("encrypt_note should succeed");
 
         // 48 bytes plaintext + 16 bytes Poly1305 tag = 64 bytes
         assert_eq!(ciphertext.len(), NOTE_PLAINTEXT_SIZE + AUTH_TAG_SIZE);
@@ -271,7 +272,8 @@ mod tests {
         let pk = pallas::Point::generator() * sk;
 
         let (eph_pk_bytes, ciphertext) =
-            encrypt_note(pk, 100, 0, pallas::Scalar::from(1u64), &mut rng);
+            encrypt_note(pk, 100, 0, pallas::Scalar::from(1u64), &mut rng)
+            .expect("encrypt_note should succeed");
 
         // A completely different secret key should fail authentication.
         let wrong_sk = pallas::Scalar::random(&mut rng);
@@ -289,7 +291,8 @@ mod tests {
         let pk = pallas::Point::generator() * sk;
 
         let (eph_pk_bytes, ciphertext) =
-            encrypt_note(pk, 50, 1, pallas::Scalar::from(2u64), &mut rng);
+            encrypt_note(pk, 50, 1, pallas::Scalar::from(2u64), &mut rng)
+            .expect("encrypt_note should succeed");
 
         // Truncate: drop last byte so length check fails.
         let short = &ciphertext[..ciphertext.len() - 1];
@@ -307,7 +310,8 @@ mod tests {
         let pk = pallas::Point::generator() * sk;
 
         let (eph_pk_bytes, mut ciphertext) =
-            encrypt_note(pk, 25, 2, pallas::Scalar::from(3u64), &mut rng);
+            encrypt_note(pk, 25, 2, pallas::Scalar::from(3u64), &mut rng)
+            .expect("encrypt_note should succeed");
 
         // Flip a byte in the auth tag region (last 16 bytes).
         let tag_start = ciphertext.len() - AUTH_TAG_SIZE;
@@ -327,7 +331,8 @@ mod tests {
         let pk = pallas::Point::generator() * sk;
 
         let (eph_pk_bytes, mut ciphertext) =
-            encrypt_note(pk, 10, 0, pallas::Scalar::from(4u64), &mut rng);
+            encrypt_note(pk, 10, 0, pallas::Scalar::from(4u64), &mut rng)
+            .expect("encrypt_note should succeed");
 
         // Flip a byte in the encrypted body (before tag).
         ciphertext[0] ^= 0xFF;

@@ -54,13 +54,14 @@ pub struct Assertion {
 pub struct AssertionId(pub [u8; 32]);
 
 impl AssertionId {
-    /// Derive an assertion ID from the trace root and proof hash.
-    pub fn from_trace(trace_root: &[u8; 32], proof_hash: &[u8; 32]) -> Self {
+    /// Derive an assertion ID from the trace root, proof hash, and public inputs hash.
+    pub fn from_trace(trace_root: &[u8; 32], proof_hash: &[u8; 32], public_inputs_hash: &[u8; 32]) -> Self {
         use sha2::{Digest, Sha256};
         let mut h = Sha256::new();
         h.update(b"lumora-bitvm:assertion-id");
         h.update(trace_root);
         h.update(proof_hash);
+        h.update(public_inputs_hash);
         Self(h.finalize().into())
     }
 }
@@ -72,7 +73,7 @@ impl Assertion {
         assert_height: u64,
         bond_sats: u64,
     ) -> Self {
-        let id = AssertionId::from_trace(&trace.trace_root, &trace.proof_hash);
+        let id = AssertionId::from_trace(&trace.trace_root, &trace.proof_hash, &trace.public_inputs_hash);
         Self {
             id,
             trace_root: trace.trace_root,
@@ -546,8 +547,8 @@ mod tests {
     fn test_assertion_id_deterministic() {
         let tr = [0xAAu8; 32];
         let ph = [0xBBu8; 32];
-        let id1 = AssertionId::from_trace(&tr, &ph);
-        let id2 = AssertionId::from_trace(&tr, &ph);
+        let id1 = AssertionId::from_trace(&tr, &ph, &[0u8; 32]);
+        let id2 = AssertionId::from_trace(&tr, &ph, &[0u8; 32]);
         assert_eq!(id1, id2);
     }
 
@@ -556,8 +557,8 @@ mod tests {
         let tr1 = [0xAAu8; 32];
         let tr2 = [0xCCu8; 32];
         let ph = [0xBBu8; 32];
-        let id1 = AssertionId::from_trace(&tr1, &ph);
-        let id2 = AssertionId::from_trace(&tr2, &ph);
+        let id1 = AssertionId::from_trace(&tr1, &ph, &[0u8; 32]);
+        let id2 = AssertionId::from_trace(&tr2, &ph, &[0u8; 32]);
         assert_ne!(id1, id2);
     }
 }

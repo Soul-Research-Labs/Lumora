@@ -180,33 +180,44 @@ impl Circuit<pallas::Base> for WithdrawCircuit {
         )?;
 
         // rhs = output_sum + exit_value + fee
-        let rhs = layouter.assign_region(
-            || "value conservation (withdraw)",
+        // Step 1: mid = output_sum + exit_value
+        let mid = layouter.assign_region(
+            || "withdraw_add_exit",
             |mut region| {
+                config.add_selector.enable(&mut region, 0)?;
+
                 let out = output_sum.copy_advice(|| "output_sum", &mut region, config.advice[0], 0)?;
                 let exit = exit_cell.copy_advice(|| "exit", &mut region, config.advice[1], 0)?;
-                let fee = fee_cell.copy_advice(|| "fee", &mut region, config.advice[2], 0)?;
 
-                // mid = output_sum + exit_value
                 let mid_val = out.value().zip(exit.value()).map(|(o, e)| *o + *e);
-                let mid = region.assign_advice(
+                region.assign_advice(
                     || "output_sum + exit_value",
                     config.advice[3],
                     0,
                     || mid_val,
-                )?;
+                )
+            },
+        )?;
 
-                // rhs = mid + fee
-                let rhs_val = mid.value().zip(fee.value()).map(|(m, f)| *m + *f);
+        // Step 2: rhs = mid + fee, constrain input_sum == rhs
+        let rhs = layouter.assign_region(
+            || "withdraw_add_fee",
+            |mut region| {
+                config.add_selector.enable(&mut region, 0)?;
+
+                let m = mid.copy_advice(|| "mid", &mut region, config.advice[0], 0)?;
+                let fee = fee_cell.copy_advice(|| "fee", &mut region, config.advice[1], 0)?;
+
+                let rhs_val = m.value().zip(fee.value()).map(|(m, f)| *m + *f);
                 let rhs = region.assign_advice(
                     || "output_sum + exit_value + fee",
-                    config.advice[0],
-                    1,
+                    config.advice[3],
+                    0,
                     || rhs_val,
                 )?;
 
                 // Constrain input_sum == rhs
-                let inp = input_sum.copy_advice(|| "input_sum", &mut region, config.advice[1], 1)?;
+                let inp = input_sum.copy_advice(|| "input_sum", &mut region, config.advice[2], 0)?;
                 region.constrain_equal(inp.cell(), rhs.cell())?;
                 Ok(rhs)
             },

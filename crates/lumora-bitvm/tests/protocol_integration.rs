@@ -16,7 +16,7 @@ use lumora_bitvm::script::recompute_step_output;
 use lumora_bitvm::trace::{
     compute_trace_merkle_root, sha256, step_leaf_hash, StepKind, TraceStep, VerificationTrace,
 };
-use lumora_bitvm::transactions::{OutPoint, TxId, XOnlyPubKey};
+use lumora_bitvm::transactions::{OutPoint, TaprootLeaf, TaprootTree, TxId, XOnlyPubKey};
 
 fn operator_key() -> XOnlyPubKey {
     XOnlyPubKey([0xAA; 32])
@@ -113,7 +113,7 @@ fn test_honest_operator_finalizes() {
     let mut operator = Operator::new(config, operator_key(), challenger_key());
 
     let trace = honest_trace();
-    let mut challenger = Challenger::new(ChallengerConfig::default(), challenger_key());
+    let mut challenger = Challenger::new(ChallengerConfig::default(), challenger_key(), operator_key());
 
     // Operator posts assertion at height 100
     let (fund, val) = funding_utxo();
@@ -126,6 +126,8 @@ fn test_honest_operator_finalizes() {
     challenger.observe_assertion(
         assertion.clone(),
         OutPoint { txid: TxId([0xDD; 32]), vout: 0 },
+        operator_key(),
+        TaprootTree::Leaf(TaprootLeaf { version: 0xC0, script_bytes: vec![0x51] }),
     );
 
     // Challenger checks for fraud — should find none
@@ -158,7 +160,7 @@ fn test_dishonest_operator_caught() {
     let mut operator = Operator::new(config, operator_key(), challenger_key());
 
     let trace = dishonest_trace();
-    let mut challenger = Challenger::new(ChallengerConfig::default(), challenger_key());
+    let mut challenger = Challenger::new(ChallengerConfig::default(), challenger_key(), operator_key());
 
     // Operator posts dishonest assertion at height 100
     let (fund, val) = funding_utxo();
@@ -170,6 +172,8 @@ fn test_dishonest_operator_caught() {
     challenger.observe_assertion(
         assertion.clone(),
         OutPoint { txid: TxId([0xDD; 32]), vout: 0 },
+        operator_key(),
+        TaprootTree::Leaf(TaprootLeaf { version: 0xC0, script_bytes: vec![0x51] }),
     );
 
     // Challenger checks for fraud — should find step 3 is incorrect

@@ -285,7 +285,7 @@ impl Wallet {
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         let mut imported = 0usize;
         for owned in bundle.notes {
-            if !self.has_leaf(owned.leaf_index) {
+            if !self.has_leaf(owned.leaf_index) && owned.note.owner == self.owner_field {
                 self.notes.push(owned);
                 imported += 1;
             }
@@ -329,8 +329,8 @@ impl Wallet {
         self.notes
             .iter()
             .filter(|n| n.note.asset == asset)
-            .map(|n| n.note.value)
-            .sum()
+            .try_fold(0u64, |acc, n| acc.checked_add(n.note.value))
+            .unwrap_or(u64::MAX)
     }
 
     /// Number of unspent notes.
@@ -813,7 +813,8 @@ mod tests {
 
         wallet.export_notes(&path).expect("export should succeed");
 
-        let mut wallet2 = Wallet::random(OsRng);
+        // Import into a wallet with the SAME owner (ownership check).
+        let mut wallet2 = Wallet::new(wallet.spending_key().clone());
         let imported = wallet2.import_notes(&path).expect("import should succeed");
         assert_eq!(imported, 2);
         assert_eq!(wallet2.note_count(), 2);

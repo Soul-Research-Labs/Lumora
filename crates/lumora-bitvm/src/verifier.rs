@@ -255,6 +255,6 @@ mod tests {
     }
 
     fn trace_assertion_id(trace: &VerificationTrace) -> AssertionId {
-        AssertionId::from_trace(&trace.trace_root, &trace.proof_hash)
+        AssertionId::from_trace(&trace.trace_root, &trace.proof_hash, &trace.public_inputs_hash)
     }
 }

@@ -127,8 +127,9 @@ pub fn apply_delta(node: &mut super::LumoraNode, delta: &StateDelta) -> usize {
     for event in &delta.events {
         match event {
             PoolEvent::Deposit { commitment, amount, .. } => {
-                let _ = node.deposit(*commitment, *amount);
-                applied += 1;
+                if node.deposit(*commitment, *amount).is_ok() {
+                    applied += 1;
+                }
             }
             PoolEvent::Transfer { nullifiers, output_commitments, .. } => {
                 // Replay state changes: spend nullifiers, insert commitments.

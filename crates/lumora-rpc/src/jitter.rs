@@ -32,6 +32,7 @@ impl Default for JitterConfig {
 impl JitterConfig {
     /// Create a jitter config with the given range in milliseconds.
     pub fn from_millis(min_ms: u64, max_ms: u64) -> Self {
+        let (min_ms, max_ms) = if min_ms > max_ms { (max_ms, min_ms) } else { (min_ms, max_ms) };
         Self {
             min: Duration::from_millis(min_ms),
             max: Duration::from_millis(max_ms),

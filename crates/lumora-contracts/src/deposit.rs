@@ -47,15 +47,15 @@ pub fn execute_deposit(
         });
     }
 
-    // Insert commitment into the Merkle tree.
-    let leaf_index = state.insert_commitment(request.commitment);
-    let new_root = state.current_root();
-
-    // Track the pool balance.
+    // Track the pool balance (check before mutating the tree).
     state.pool_balance = state
         .pool_balance
         .checked_add(request.amount)
         .ok_or(ContractError::PoolBalanceOverflow)?;
+
+    // Insert commitment into the Merkle tree.
+    let leaf_index = state.insert_commitment(request.commitment);
+    let new_root = state.current_root();
 
     state.emit_event(PoolEvent::Deposit {
         commitment: request.commitment,

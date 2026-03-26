@@ -182,7 +182,8 @@ pub fn build_assert_tx(params: &AssertTxParams) -> AssertTxOutput {
         &taproot_tree,
     );
 
-    let bond_value = params.funding_value - params.fee_sats;
+    let bond_value = params.funding_value.checked_sub(params.fee_sats)
+        .expect("fee exceeds funding value");
 
     let tx = Transaction {
         version: 2,
@@ -228,6 +229,10 @@ pub struct DisproveTxParams {
     pub challenger_script_pubkey: Vec<u8>,
     /// Transaction fee in satoshis.
     pub fee_sats: u64,
+    /// The operator's x-only public key (internal key for the Taproot output).
+    pub operator_pubkey: XOnlyPubKey,
+    /// The Taproot script tree from the Assert TX.
+    pub taproot_tree: TaprootTree,
 }
 
 /// Construct a Disprove transaction.
@@ -240,14 +245,18 @@ pub fn build_disprove_tx(params: &DisproveTxParams) -> Transaction {
 
     // Build the witness stack:
     // <step_witness> <claimed_output_hash> <input_hash> <script> <control_block>
+    let script_bytes = serialize_script_fragment(&disprove_script);
+    let control_block = build_control_block(&params.operator_pubkey, &params.taproot_tree, &disprove_script);
     let witness = vec![
         params.input_hash.to_vec(),
         params.witness.clone(),
         params.claimed_output_hash.to_vec(),
-        serialize_script_fragment(&disprove_script),
+        script_bytes,
+        control_block,
     ];
 
-    let payout_value = params.assert_value - params.fee_sats;
+    let payout_value = params.assert_value.checked_sub(params.fee_sats)
+        .expect("fee exceeds assert value");
 
     Transaction {
         version: 2,
@@ -289,7 +298,8 @@ pub struct TimeoutTxParams {
 /// requires the operator's signature and that `timeout_blocks` have
 /// elapsed since the Assert TX was mined (enforced by OP_CSV).
 pub fn build_timeout_tx(params: &TimeoutTxParams) -> Transaction {
-    let payout_value = params.assert_value - params.fee_sats;
+    let payout_value = params.assert_value.checked_sub(params.fee_sats)
+        .expect("fee exceeds assert value");
 
     Transaction {
         version: 2,
@@ -310,6 +320,27 @@ pub fn build_timeout_tx(params: &TimeoutTxParams) -> Transaction {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Compute a deterministic txid for a transaction (double-SHA256 of serialized fields).
+pub fn compute_txid(tx: &Transaction) -> TxId {
+    let mut h = Sha256::new();
+    h.update(tx.version.to_le_bytes());
+    h.update((tx.inputs.len() as u32).to_le_bytes());
+    for inp in &tx.inputs {
+        h.update(&inp.previous_output.txid.0);
+        h.update(inp.previous_output.vout.to_le_bytes());
+        h.update(inp.sequence.to_le_bytes());
+    }
+    h.update((tx.outputs.len() as u32).to_le_bytes());
+    for out in &tx.outputs {
+        h.update(out.value.to_le_bytes());
+        h.update((out.script_pubkey.len() as u32).to_le_bytes());
+        h.update(&out.script_pubkey);
+    }
+    h.update(tx.locktime.to_le_bytes());
+    let first = h.finalize();
+    TxId(Sha256::digest(first).into())
+}
 
 /// Compute a Taproot tagged hash: `SHA256(SHA256(tag) || SHA256(tag) || msg)`.
 pub fn tagged_hash(tag: &str, msg: &[u8]) -> [u8; 32] {
@@ -431,6 +462,60 @@ fn compute_taproot_output_script(
     script.push(0x20); // Push 32 bytes
     script.extend_from_slice(&tweaked);
     script
+}
+
+/// Build a Taproot control block for spending a specific leaf.
+///
+/// Format: `[leaf_version | parity_bit] [internal_key (32)] [merkle_path...]`
+fn build_control_block(
+    internal_key: &XOnlyPubKey,
+    tree: &TaprootTree,
+    target_leaf: &ScriptFragment,
+) -> Vec<u8> {
+    let target_script = serialize_script_fragment(target_leaf);
+    let target_hash = tagged_hash("TapLeaf", &[&[0xC0u8], target_script.as_slice()].concat());
+    let path = merkle_path_for_leaf(tree, &target_hash);
+    let mut cb = Vec::with_capacity(1 + 32 + path.len() * 32);
+    cb.push(0xC0); // leaf version, even parity
+    cb.extend_from_slice(&internal_key.0);
+    for sibling in &path {
+        cb.extend_from_slice(sibling);
+    }
+    cb
+}
+
+/// Find the Merkle path (sibling hashes) for a specific leaf in a Taproot tree.
+fn merkle_path_for_leaf(tree: &TaprootTree, target: &[u8; 32]) -> Vec<[u8; 32]> {
+    match tree {
+        TaprootTree::Leaf(_) => vec![], // At target leaf, no siblings needed
+        TaprootTree::Branch(left, right) => {
+            let l_hash = hash_taproot_tree(left);
+            let r_hash = hash_taproot_tree(right);
+            // Check if target is in the left subtree
+            if contains_leaf(left, target) {
+                let mut path = merkle_path_for_leaf(left, target);
+                path.push(r_hash);
+                path
+            } else {
+                let mut path = merkle_path_for_leaf(right, target);
+                path.push(l_hash);
+                path
+            }
+        }
+    }
+}
+
+/// Check if a Taproot (sub)tree contains a specific leaf hash.
+fn contains_leaf(tree: &TaprootTree, target: &[u8; 32]) -> bool {
+    match tree {
+        TaprootTree::Leaf(leaf) => {
+            let h = tagged_hash("TapLeaf", &[&[leaf.version], leaf.script_bytes.as_slice()].concat());
+            h == *target
+        }
+        TaprootTree::Branch(left, right) => {
+            contains_leaf(left, target) || contains_leaf(right, target)
+        }
+    }
 }
 
 /// Compute the Merkle root of a Taproot tree.
@@ -608,6 +693,8 @@ mod tests {
                 s
             },
             fee_sats: 50_000,
+            operator_pubkey: XOnlyPubKey([0xAA; 32]),
+            taproot_tree: TaprootTree::Leaf(TaprootLeaf { version: 0xC0, script_bytes: vec![0x51] }),
         };
 
         let tx = build_disprove_tx(&params);

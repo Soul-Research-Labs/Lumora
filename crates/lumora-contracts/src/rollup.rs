@@ -150,12 +150,15 @@ impl<B: RollupBridge> StateRootCommitter<B> {
 
     /// Commit all pending roots to the host chain in order.
     pub fn flush(&mut self) -> Result<usize, BridgeError> {
-        let count = self.pending.len();
-        for root in self.pending.drain(..) {
-            self.bridge.commit_state_root(root)?;
-            self.committed.push(root);
+        let batch = std::mem::take(&mut self.pending);
+        for (i, root) in batch.iter().enumerate() {
+            if let Err(e) = self.bridge.commit_state_root(*root) {
+                self.pending.extend_from_slice(&batch[i..]);
+                return Err(e);
+            }
+            self.committed.push(*root);
         }
-        Ok(count)
+        Ok(batch.len())
     }
 
     pub fn committed_count(&self) -> usize {

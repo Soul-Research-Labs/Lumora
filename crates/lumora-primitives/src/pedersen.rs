@@ -32,7 +32,7 @@ pub fn generator_g() -> pallas::Point {
 /// the discrete log between G and H is unknown.
 pub fn generator_h() -> pallas::Point {
     // Hash a domain separator to get a seed field element.
-    let a = pallas::Base::from(0x5A415345_4F4E5F48u64); // "LUMORA_H" as u64
+    let a = pallas::Base::from(0x5A415345_4F4E5F48u64); // "ZASEON_H" as u64
     let b = pallas::Base::from(0x50454445_5253454Eu64); // "PEDERSEN" as u64
     let seed = poseidon::hash_two(a, b);
 

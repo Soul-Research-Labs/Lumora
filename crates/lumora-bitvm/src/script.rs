@@ -125,8 +125,6 @@ pub fn build_disprove_script(kind: StepKind) -> ScriptFragment {
         Op::Rot,                  // <expected> <tag> <input> <witness>
         Op::Rot,                  // <expected> <input> <witness> <tag>
         Op::Cat,                  // <expected> <input> <witness||tag>
-        Op::Swap,                 // <expected> <witness||tag> <input>
-        Op::Swap,                 // <expected> <input> <witness||tag>
         Op::Cat,                  // <expected> <input||witness||tag>
         Op::Sha256,               // <expected> <hash>
         Op::Equal,                // <expected == hash>
@@ -156,7 +154,6 @@ pub fn build_step_verifier_script(kind: StepKind) -> ScriptFragment {
         // Concatenate input || witness || tag and hash
         Op::Push(tag.to_vec()),   // <claimed> <input> <witness> <tag>
         Op::Cat,                  // <claimed> <input> <witness||tag>
-        Op::Swap,                 // <claimed> <witness||tag> <input>
         Op::Cat,                  // <claimed> <input||witness||tag>
         Op::Sha256,               // <claimed> <recomputed_hash>
         Op::EqualVerify,          // assert claimed == recomputed

@@ -39,8 +39,9 @@
 use halo2_proofs::{
     circuit::{AssignedCell, Layouter, SimpleFloorPlanner, Value},
     plonk::{
-        Advice, Circuit, Column, ConstraintSystem, Error, Fixed, Instance,
+        Advice, Circuit, Column, ConstraintSystem, Error, Fixed, Instance, Selector,
     },
+    poly::Rotation,
 };
 use pasta_curves::pallas;
 
@@ -105,6 +106,16 @@ pub struct TransferConfig {
     pub poseidon_config: PoseidonChipConfig,
     /// Range check chip (constrains values to u64).
     pub range_check_config: RangeCheckConfig,
+    /// Selector for Merkle conditional swap gate.
+    pub swap_selector: Selector,
+    /// Selector for running-sum accumulation gate (advice[0]_next = advice[0]_cur + advice[1]_cur).
+    pub sum_selector: Selector,
+    /// Selector for inline addition gate (advice[3]_cur = advice[0]_cur + advice[1]_cur).
+    pub add_selector: Selector,
+    /// Selector for multiplication gate (advice[2]_cur = advice[0]_cur * advice[1]_cur).
+    pub mul_selector: Selector,
+    /// Selector for subtraction gate (advice[2]_cur = advice[0]_cur - advice[1]_cur).
+    pub sub_selector: Selector,
 }
 
 impl Circuit<pallas::Base> for TransferCircuit {
@@ -166,12 +177,114 @@ impl Circuit<pallas::Base> for TransferCircuit {
             advice[1], // running_sum
         );
 
+        // Selector for Merkle conditional swap.
+        // Row layout:
+        //   cur row:  advice[0]=current, advice[1]=sibling, advice[2]=bit
+        //   next row: advice[0]=left,    advice[1]=right
+        // Constraints:
+        //   bit*(1-bit) == 0
+        //   left  == current + bit*(sibling - current)
+        //   right == sibling + bit*(current - sibling)
+        let swap_selector = meta.selector();
+        meta.create_gate("merkle_swap", |meta| {
+            let s = meta.query_selector(swap_selector);
+            let cur = meta.query_advice(advice[0], Rotation::cur());
+            let sib = meta.query_advice(advice[1], Rotation::cur());
+            let bit = meta.query_advice(advice[2], Rotation::cur());
+            let left = meta.query_advice(advice[0], Rotation::next());
+            let right = meta.query_advice(advice[1], Rotation::next());
+            let one = halo2_proofs::plonk::Expression::Constant(pallas::Base::one());
+
+            let boolean = bit.clone() * (one - bit.clone());
+            let left_check = left - cur.clone() - bit.clone() * (sib.clone() - cur.clone());
+            let right_check = right - sib.clone() - bit * (cur - sib);
+
+            halo2_proofs::plonk::Constraints::with_selector(
+                s,
+                [("boolean", boolean), ("left", left_check), ("right", right_check)],
+            )
+        });
+
+        // Selector for running-sum accumulation.
+        // Row layout:
+        //   cur row:  advice[0]=sum_i, advice[1]=v_{i+1}
+        //   next row: advice[0]=sum_{i+1}
+        // Constraint: sum_{i+1} == sum_i + v_{i+1}
+        let sum_selector = meta.selector();
+        meta.create_gate("sum_accumulate", |meta| {
+            let s = meta.query_selector(sum_selector);
+            let sum_cur = meta.query_advice(advice[0], Rotation::cur());
+            let v = meta.query_advice(advice[1], Rotation::cur());
+            let sum_next = meta.query_advice(advice[0], Rotation::next());
+
+            halo2_proofs::plonk::Constraints::with_selector(
+                s,
+                [("sum", sum_next - sum_cur - v)],
+            )
+        });
+
+        // Selector for inline addition.
+        // Row layout:
+        //   cur row: advice[0]=a, advice[1]=b, advice[3]=c
+        // Constraint: c == a + b
+        let add_selector = meta.selector();
+        meta.create_gate("addition", |meta| {
+            let s = meta.query_selector(add_selector);
+            let a = meta.query_advice(advice[0], Rotation::cur());
+            let b = meta.query_advice(advice[1], Rotation::cur());
+            let c = meta.query_advice(advice[3], Rotation::cur());
+
+            halo2_proofs::plonk::Constraints::with_selector(
+                s,
+                [("add", c - a - b)],
+            )
+        });
+
+        // Selector for multiplication.
+        // Row layout:
+        //   cur row: advice[0]=a, advice[1]=b, advice[2]=c
+        // Constraint: c == a * b
+        let mul_selector = meta.selector();
+        meta.create_gate("multiplication", |meta| {
+            let s = meta.query_selector(mul_selector);
+            let a = meta.query_advice(advice[0], Rotation::cur());
+            let b = meta.query_advice(advice[1], Rotation::cur());
+            let c = meta.query_advice(advice[2], Rotation::cur());
+
+            halo2_proofs::plonk::Constraints::with_selector(
+                s,
+                [("mul", c - a * b)],
+            )
+        });
+
+        // Selector for subtraction.
+        // Row layout:
+        //   cur row: advice[0]=a, advice[1]=b, advice[2]=c
+        // Constraint: c == a - b
+        let sub_selector = meta.selector();
+        meta.create_gate("subtraction", |meta| {
+            let s = meta.query_selector(sub_selector);
+            let a = meta.query_advice(advice[0], Rotation::cur());
+            let b = meta.query_advice(advice[1], Rotation::cur());
+            let c = meta.query_advice(advice[2], Rotation::cur());
+
+            halo2_proofs::plonk::Constraints::with_selector(
+                s,
+                [("sub", c - a + b)],
+            )
+        });
+
         TransferConfig {
             advice,
             instance,
             fixed,
             poseidon_config,
             range_check_config,
+            swap_selector,
+            sum_selector,
+            add_selector,
+            mul_selector,
+            sub_selector,
         }
     }
 
@@ -260,6 +373,8 @@ impl Circuit<pallas::Base> for TransferCircuit {
         let rhs = layouter.assign_region(
             || "value conservation",
             |mut region| {
+                config.add_selector.enable(&mut region, 0)?;
+
                 let out = output_sum.copy_advice(|| "output_sum", &mut region, config.advice[0], 0)?;
                 let fee = fee_cell.copy_advice(|| "fee", &mut region, config.advice[1], 0)?;
                 let inp = input_sum.copy_advice(|| "input_sum", &mut region, config.advice[2], 0)?;
@@ -559,6 +674,8 @@ pub(crate) fn verify_merkle_path(
         let (left, right) = layouter.assign_region(
             || format!("merkle_swap_{}", i),
             |mut region| {
+                config.swap_selector.enable(&mut region, 0)?;
+
                 let cur = current.copy_advice(|| "current", &mut region, config.advice[0], 0)?;
                 let sib = sibling.copy_advice(|| "sibling", &mut region, config.advice[1], 0)?;
                 let b = bit.copy_advice(|| "bit", &mut region, config.advice[2], 0)?;
@@ -599,6 +716,8 @@ pub(crate) fn sum_values(
             let mut sum = values[0].copy_advice(|| "v0", &mut region, config.advice[0], 0)?;
 
             for (i, v) in values[1..].iter().enumerate() {
+                config.sum_selector.enable(&mut region, i)?;
+
                 let vi = v.copy_advice(
                     || format!("v{}", i + 1),
                     &mut region,

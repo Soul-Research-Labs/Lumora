@@ -115,7 +115,8 @@ pub fn execute_withdraw(
     }
 
     // 7. Decrease pool balance.
-    state.pool_balance -= request.amount;
+    state.pool_balance = state.pool_balance.checked_sub(request.amount)
+        .ok_or(ContractError::InsufficientPoolBalance)?;
 
     let new_root = state.current_root();
 

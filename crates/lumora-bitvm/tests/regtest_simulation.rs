@@ -19,7 +19,7 @@ use lumora_bitvm::trace::{
 };
 use lumora_bitvm::transactions::{
     build_assert_tx, build_disprove_tx, build_timeout_tx, AssertTxParams, DisproveTxParams,
-    OutPoint, TimeoutTxParams, TxId, XOnlyPubKey,
+    OutPoint, TaprootLeaf, TaprootTree, TimeoutTxParams, TxId, XOnlyPubKey,
 };
 
 fn operator_key() -> XOnlyPubKey {
@@ -138,6 +138,8 @@ fn test_disprove_tx_value_flow() {
             s
         },
         fee_sats: 2_000,
+        operator_pubkey: XOnlyPubKey([0xAA; 32]),
+        taproot_tree: TaprootTree::Leaf(TaprootLeaf { version: 0xC0, script_bytes: vec![0x51] }),
     };
 
     let tx = build_disprove_tx(&params);
@@ -303,6 +305,8 @@ fn test_full_transaction_graph() {
             s
         },
         fee_sats: 1_500,
+        operator_pubkey: operator_key(),
+        taproot_tree: TaprootTree::Leaf(TaprootLeaf { version: 0xC0, script_bytes: vec![0x51] }),
     });
 
     // 3. Also build the timeout path (for the honest case)

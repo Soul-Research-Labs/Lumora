@@ -176,9 +176,7 @@ impl Operator {
                 script_pubkey.extend_from_slice(&self.operator_pubkey.0);
                 let timeout_params = TimeoutTxParams {
                     assert_outpoint: OutPoint {
-                        txid: tracked.assert_tx.tx.inputs.first()
-                            .map(|i| i.previous_output.txid)
-                            .unwrap_or(crate::transactions::TxId([0u8; 32])),
+                        txid: crate::transactions::compute_txid(&tracked.assert_tx.tx),
                         vout: 0,
                     },
                     assert_value: tracked.assertion.bond_sats,

@@ -199,7 +199,8 @@ fn note_encryption_decrypt_roundtrip() {
     let asset = 1u64;
     let randomness = pallas::Scalar::random(OsRng);
 
-    let (eph_pk_bytes, ciphertext) = encrypt_note(recipient_pk, value, asset, randomness, OsRng);
+    let (eph_pk_bytes, ciphertext) = encrypt_note(recipient_pk, value, asset, randomness, OsRng)
+        .expect("encrypt_note should succeed");
     let decrypted = decrypt_note(sk_scalar, &eph_pk_bytes, &ciphertext);
 
     let (dec_value, dec_asset, dec_randomness) = decrypted.expect("decryption should succeed");
@@ -215,7 +216,8 @@ fn note_encryption_wrong_key_fails() {
     let wrong_sk = pallas::Scalar::random(OsRng);
     let pk = pallas::Point::generator() * sk;
 
-    let (eph, ct) = encrypt_note(pk, 42, 0, pallas::Scalar::random(OsRng), OsRng);
+    let (eph, ct) = encrypt_note(pk, 42, 0, pallas::Scalar::random(OsRng), OsRng)
+        .expect("encrypt_note should succeed");
     assert!(decrypt_note(wrong_sk, &eph, &ct).is_none());
 }
 

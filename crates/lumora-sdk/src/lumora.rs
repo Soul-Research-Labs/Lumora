@@ -217,7 +217,7 @@ impl Lumora {
             asset,
             r_recv_scalar,
             OsRng,
-        );
+        ).ok_or(ContractError::ProofError("recipient public key is identity point".into()))?;
         let commitment_bytes = proof.output_commitments[0].to_repr();
         self.node.relay_note(tag, EncryptedNote {
             leaf_index: receipt.leaf_indices[0],
@@ -256,7 +256,8 @@ impl Lumora {
         asset: u64,
     ) -> Result<StealthSendResult, ContractError> {
         let (one_time_owner, stealth_meta) =
-            lumora_note::keys::stealth_send(recipient_pk, OsRng);
+            lumora_note::keys::stealth_send(recipient_pk, OsRng)
+            .ok_or(ContractError::ProofError("stealth send: identity point".into()))?;
 
         let result = self.send_asset(one_time_owner, recipient_pk, amount, asset)?;
 

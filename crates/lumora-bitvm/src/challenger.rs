@@ -12,7 +12,7 @@ use crate::protocol::{Assertion, AssertionId, Challenge, ChallengeResponse};
 use crate::script::validate_step;
 use crate::trace::{step_leaf_hash, verify_merkle_proof, StepKind, TraceStep};
 use crate::transactions::{
-    build_disprove_tx, DisproveTxParams, OutPoint, Transaction, XOnlyPubKey,
+    build_disprove_tx, DisproveTxParams, OutPoint, TaprootTree, Transaction, XOnlyPubKey,
 };
 
 // ---------------------------------------------------------------------------
@@ -51,6 +51,7 @@ pub enum VerifyOutcome {
 pub struct Challenger {
     config: ChallengerConfig,
     challenger_pubkey: XOnlyPubKey,
+    operator_pubkey: XOnlyPubKey,
     /// Observed assertions awaiting verification.
     observed: Vec<ObservedAssertion>,
 }
@@ -60,25 +61,38 @@ pub struct Challenger {
 struct ObservedAssertion {
     assertion: Assertion,
     assert_outpoint: OutPoint,
+    /// The operator's x-only public key (Taproot internal key).
+    operator_pubkey: XOnlyPubKey,
+    /// The Taproot script tree from the Assert TX.
+    taproot_tree: TaprootTree,
     /// Index of the disputed step, if any.
     disputed_step: Option<u32>,
 }
 
 impl Challenger {
     /// Create a new challenger.
-    pub fn new(config: ChallengerConfig, challenger_pubkey: XOnlyPubKey) -> Self {
+    pub fn new(config: ChallengerConfig, challenger_pubkey: XOnlyPubKey, operator_pubkey: XOnlyPubKey) -> Self {
         Self {
             config,
             challenger_pubkey,
+            operator_pubkey,
             observed: Vec::new(),
         }
     }
 
     /// Observe a new operator assertion on Bitcoin.
-    pub fn observe_assertion(&mut self, assertion: Assertion, assert_outpoint: OutPoint) {
+    pub fn observe_assertion(
+        &mut self,
+        assertion: Assertion,
+        assert_outpoint: OutPoint,
+        operator_pubkey: XOnlyPubKey,
+        taproot_tree: TaprootTree,
+    ) {
         self.observed.push(ObservedAssertion {
             assertion,
             assert_outpoint,
+            operator_pubkey,
+            taproot_tree,
             disputed_step: None,
         });
     }
@@ -221,6 +235,8 @@ impl Challenger {
             witness: response.witness.clone(),
             challenger_script_pubkey: script_pubkey,
             fee_sats: 1_000,
+            operator_pubkey: obs.operator_pubkey,
+            taproot_tree: obs.taproot_tree.clone(),
         });
 
         Some(disprove_tx)
@@ -284,7 +300,7 @@ impl ChallengerDaemon {
         mut on_fraud: G,
         cancel: tokio::sync::watch::Receiver<bool>,
     ) where
-        F: FnMut() -> Vec<(Assertion, OutPoint)>,
+        F: FnMut() -> Vec<(Assertion, OutPoint, TaprootTree)>,
         G: FnMut(Transaction),
     {
         tracing::info!(
@@ -299,9 +315,9 @@ impl ChallengerDaemon {
 
             // Observe new assertions
             let new_assertions = fetch_assertions();
-            for (assertion, outpoint) in new_assertions {
+            for (assertion, outpoint, tree) in new_assertions {
                 tracing::debug!(id = ?assertion.id, "observed new assertion");
-                self.challenger.observe_assertion(assertion, outpoint);
+                self.challenger.observe_assertion(assertion, outpoint, self.challenger.operator_pubkey, tree);
             }
 
             tokio::time::sleep(self.poll_interval).await;
@@ -316,6 +332,8 @@ impl ChallengerDaemon {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::transactions::TaprootTree;
+    use crate::transactions::TaprootLeaf;
     use crate::config::ChallengerConfig;
     use crate::protocol::Assertion;
     use crate::script::recompute_step_output;
@@ -327,7 +345,15 @@ mod tests {
     fn test_challenger() -> Challenger {
         let config = ChallengerConfig::default();
         let pubkey = XOnlyPubKey([0xCC; 32]);
-        Challenger::new(config, pubkey)
+        let operator = XOnlyPubKey([0xAA; 32]);
+        Challenger::new(config, pubkey, operator)
+    }
+
+    fn test_tree() -> TaprootTree {
+        TaprootTree::Leaf(TaprootLeaf {
+            version: 0xC0,
+            script_bytes: vec![0x51],
+        })
     }
 
     fn honest_steps() -> Vec<TraceStep> {
@@ -397,7 +423,7 @@ mod tests {
         let mut c = test_challenger();
         let trace = honest_trace();
         let a = test_assertion(&trace);
-        c.observe_assertion(a, test_outpoint());
+        c.observe_assertion(a, test_outpoint(), XOnlyPubKey([0xAA; 32]), test_tree());
         assert_eq!(c.observed_count(), 1);
     }
 
@@ -425,7 +451,7 @@ mod tests {
         let mut c = test_challenger();
         let trace = honest_trace();
         let a = test_assertion(&trace);
-        c.observe_assertion(a.clone(), test_outpoint());
+        c.observe_assertion(a.clone(), test_outpoint(), XOnlyPubKey([0xAA; 32]), test_tree());
 
         let challenge = c.create_challenge(a.id, 1, [0xFF; 32], 105);
         assert_eq!(challenge.assertion_id, a.id);
@@ -483,7 +509,7 @@ mod tests {
         let mut c = test_challenger();
         let trace = honest_trace();
         let a = test_assertion(&trace);
-        c.observe_assertion(a.clone(), test_outpoint());
+        c.observe_assertion(a.clone(), test_outpoint(), XOnlyPubKey([0xAA; 32]), test_tree());
         let leaves: Vec<[u8; 32]> = trace.steps.iter().map(step_leaf_hash).collect();
 
         let response = ChallengeResponse {

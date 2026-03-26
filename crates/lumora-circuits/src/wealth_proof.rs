@@ -237,37 +237,8 @@ impl Circuit<pallas::Base> for WealthCircuit {
     }
 
     fn configure(meta: &mut ConstraintSystem<pallas::Base>) -> Self::Config {
-        // Reuse the same column layout as the transfer circuit.
-        let advice = std::array::from_fn(|_| {
-            let col = meta.advice_column();
-            meta.enable_equality(col);
-            col
-        });
-
-        let instance = meta.instance_column();
-        meta.enable_equality(instance);
-
-        let fixed: [halo2_proofs::plonk::Column<halo2_proofs::plonk::Fixed>; 6] =
-            std::array::from_fn(|_| meta.fixed_column());
-        meta.enable_constant(fixed[3]);
-
-        let poseidon_config = PoseidonChipConfig::configure(
-            meta,
-            [advice[0], advice[1], advice[2]],
-            advice[3],
-            [fixed[0], fixed[1], fixed[2]],
-            [fixed[3], fixed[4], fixed[5]],
-        );
-
-        let range_check_config = RangeCheckConfig::configure(meta, advice[0], advice[1]);
-
-        TransferConfig {
-            advice,
-            instance,
-            fixed,
-            poseidon_config,
-            range_check_config,
-        }
+        // Reuse the full transfer circuit configuration including all gates.
+        <crate::transfer::TransferCircuit as Circuit<pallas::Base>>::configure(meta)
     }
 
     fn synthesize(
@@ -382,6 +353,8 @@ impl Circuit<pallas::Base> for WealthCircuit {
             let wv = layouter.assign_region(
                 || format!("weighted_val_{}", i),
                 |mut region| {
+                    config.mul_selector.enable(&mut region, 0)?;
+
                     let v = value.copy_advice(|| "val", &mut region, config.advice[0], 0)?;
                     let a = active.copy_advice(|| "active", &mut region, config.advice[1], 0)?;
                     let prod = v.value().zip(a.value()).map(|(v, a)| *v * *a);
@@ -389,6 +362,21 @@ impl Circuit<pallas::Base> for WealthCircuit {
                 },
             )?;
             weighted_values.push(wv);
+
+            // Boolean constraint: active ∈ {0, 1} via active² == active.
+            layouter.assign_region(
+                || format!("bool_active_{}", i),
+                |mut region| {
+                    config.mul_selector.enable(&mut region, 0)?;
+
+                    let a0 = active.copy_advice(|| "a", &mut region, config.advice[0], 0)?;
+                    let a1 = active.copy_advice(|| "a_dup", &mut region, config.advice[1], 0)?;
+                    let sq = a0.value().zip(a1.value()).map(|(x, y)| *x * *y);
+                    let sq_cell = region.assign_advice(|| "a²", config.advice[2], 0, || sq)?;
+                    // a² == a implies a ∈ {0,1}
+                    region.constrain_equal(sq_cell.cell(), a0.cell())
+                },
+            )?;
         }
 
         // Sum all weighted values.
@@ -399,6 +387,8 @@ impl Circuit<pallas::Base> for WealthCircuit {
                     || "wv0", &mut region, config.advice[0], 0,
                 )?;
                 for (i, wv) in weighted_values[1..].iter().enumerate() {
+                    config.sum_selector.enable(&mut region, i)?;
+
                     let vi = wv.copy_advice(
                         || format!("wv{}", i + 1), &mut region, config.advice[1], i,
                     )?;
@@ -424,6 +414,8 @@ impl Circuit<pallas::Base> for WealthCircuit {
         let surplus = layouter.assign_region(
             || "surplus",
             |mut region| {
+                config.sub_selector.enable(&mut region, 0)?;
+
                 let t = total.copy_advice(|| "total", &mut region, config.advice[0], 0)?;
                 let th = threshold_cell.copy_advice(
                     || "threshold", &mut region, config.advice[1], 0,
@@ -459,38 +451,47 @@ impl Circuit<pallas::Base> for WealthCircuit {
         // When active=1, root_i must equal root_0.
         // When active=0 (padding), the constraint is trivially satisfied.
         for i in 1..roots.len() {
-            layouter.assign_region(
-                || format!("cond_root_{}", i),
+            // Step 1: diff = root_i - root_0
+            let diff_cell = layouter.assign_region(
+                || format!("cond_root_diff_{}", i),
                 |mut region| {
+                    config.sub_selector.enable(&mut region, 0)?;
+
                     let ri = roots[i].copy_advice(
                         || "root_i", &mut region, config.advice[0], 0,
                     )?;
                     let r0 = roots[0].copy_advice(
                         || "root_0", &mut region, config.advice[1], 0,
                     )?;
+                    let diff = ri.value().zip(r0.value()).map(|(a, b)| *a - *b);
+                    region.assign_advice(
+                        || "diff", config.advice[2], 0, || diff,
+                    )
+                },
+            )?;
 
-                    // Recompute active_i from the note witness.
+            // Step 2: prod = active * diff, constrain prod == 0
+            layouter.assign_region(
+                || format!("cond_root_mul_{}", i),
+                |mut region| {
+                    config.mul_selector.enable(&mut region, 0)?;
+
                     let active_i = self.notes[i].active;
                     let active_cell = region.assign_advice(
-                        || "active_i", config.advice[2], 0, || active_i,
+                        || "active_i", config.advice[0], 0, || active_i,
                     )?;
-
-                    // diff = root_i - root_0
-                    let diff = ri.value().zip(r0.value()).map(|(a, b)| *a - *b);
-                    let diff_cell = region.assign_advice(
-                        || "diff", config.advice[3], 0, || diff,
+                    let d = diff_cell.copy_advice(
+                        || "diff", &mut region, config.advice[1], 0,
                     )?;
-
-                    // product = active * diff (must be 0)
-                    let prod = active_cell.value().zip(diff_cell.value())
+                    let prod = active_cell.value().zip(d.value())
                         .map(|(a, d)| *a * *d);
                     let prod_cell = region.assign_advice(
-                        || "prod", config.advice[0], 1, || prod,
+                        || "prod", config.advice[2], 0, || prod,
                     )?;
 
                     // Constrain product == 0 via a zero constant.
                     let zero = region.assign_advice_from_constant(
-                        || "zero", config.advice[1], 1, pallas::Base::zero(),
+                        || "zero", config.advice[3], 0, pallas::Base::zero(),
                     )?;
                     region.constrain_equal(prod_cell.cell(), zero.cell())
                 },

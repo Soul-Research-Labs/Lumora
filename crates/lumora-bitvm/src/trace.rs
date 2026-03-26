@@ -119,7 +119,7 @@ pub fn compute_trace_merkle_root(leaves: &[[u8; 32]]) -> [u8; 32] {
 ///
 /// Returns the sibling hashes from leaf to root.
 pub fn merkle_proof_for_step(leaves: &[[u8; 32]], index: usize) -> Vec<[u8; 32]> {
-    if leaves.is_empty() {
+    if leaves.is_empty() || index >= leaves.len() {
         return vec![];
     }
 
@@ -245,14 +245,16 @@ fn make_step(
     index: u32,
     kind: StepKind,
     input_state: &[u8],
-    output_state: &[u8],
+    _output_state: &[u8],
     witness: Vec<u8>,
 ) -> TraceStep {
+    let input_hash = sha256(input_state);
+    let output_hash = crate::script::recompute_step_output(kind, &input_hash, &witness);
     TraceStep {
         index,
         kind,
-        input_hash: sha256(input_state),
-        output_hash: sha256(output_state),
+        input_hash,
+        output_hash,
         witness,
     }
 }

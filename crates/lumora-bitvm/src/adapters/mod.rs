@@ -53,7 +53,7 @@ macro_rules! bridge_boilerplate {
         pub struct $bridge<T: RpcTransport = OfflineTransport> {
             config: $config,
             transport: T,
-            next_id: std::cell::Cell<u64>,
+            next_id: std::sync::atomic::AtomicU64,
         }
 
         impl $bridge<OfflineTransport> {
@@ -61,7 +61,7 @@ macro_rules! bridge_boilerplate {
                 Self {
                     config,
                     transport: OfflineTransport,
-                    next_id: std::cell::Cell::new(1),
+                    next_id: std::sync::atomic::AtomicU64::new(1),
                 }
             }
         }
@@ -71,7 +71,7 @@ macro_rules! bridge_boilerplate {
                 Self {
                     config,
                     transport,
-                    next_id: std::cell::Cell::new(1),
+                    next_id: std::sync::atomic::AtomicU64::new(1),
                 }
             }
 
@@ -84,8 +84,7 @@ macro_rules! bridge_boilerplate {
                 method: &str,
                 params: serde_json::Value,
             ) -> Result<serde_json::Value, BridgeError> {
-                let id = self.next_id.get();
-                self.next_id.set(id.wrapping_add(1));
+                let id = self.next_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 let req = JsonRpcRequest {
                     jsonrpc: "2.0",
                     id,

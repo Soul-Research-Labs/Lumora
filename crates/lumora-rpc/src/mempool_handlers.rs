@@ -63,8 +63,8 @@ pub async fn submit_transfer(
         nullifiers: [nf0, nf1],
         output_commitments: [cm0, cm1],
         fee: 0,
-        domain_chain_id: None,
-        domain_app_id: None,
+        domain_chain_id: req.domain_chain_id,
+        domain_app_id: req.domain_app_id,
     }));
     if accepted {
         Ok(StatusCode::ACCEPTED)
@@ -101,8 +101,8 @@ pub async fn submit_withdraw(
         amount: req.amount,
         fee: 0,
         recipient,
-        domain_chain_id: None,
-        domain_app_id: None,
+        domain_chain_id: req.domain_chain_id,
+        domain_app_id: req.domain_app_id,
     }));
     if accepted {
         Ok(StatusCode::ACCEPTED)

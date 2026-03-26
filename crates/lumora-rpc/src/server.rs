@@ -83,7 +83,12 @@ impl IpRateLimiter {
             bucket.window_start = now;
         }
         bucket.count += 1;
-        bucket.count <= RATE_LIMIT_PER_IP
+        let allowed = bucket.count <= RATE_LIMIT_PER_IP;
+        if map.len() > 10_000 {
+            let cutoff = RATE_LIMIT_WINDOW * 2;
+            map.retain(|_, b| now.duration_since(b.window_start) < cutoff);
+        }
+        allowed
     }
 }
 
@@ -172,12 +177,19 @@ fn router_with_state(state: AppState) -> Router {
                     // must be a valid IP), then ConnectInfo socket addr, then
                     // a non-routable sentinel so that unauthenticated traffic
                     // still gets rate-limited rather than skipped.
-                    let forwarded_ip: Option<IpAddr> = req
-                        .headers()
-                        .get("x-forwarded-for")
-                        .and_then(|v| v.to_str().ok())
-                        .and_then(|s| s.split(',').next())
-                        .and_then(|s| s.trim().parse().ok());
+                    let forwarded_ip: Option<IpAddr> = {
+                        let trust_proxy = std::env::var("LUMORA_TRUST_PROXY").ok()
+                            .map_or(false, |v| v == "true" || v == "1");
+                        if trust_proxy {
+                            req.headers()
+                                .get("x-forwarded-for")
+                                .and_then(|v| v.to_str().ok())
+                                .and_then(|s| s.split(',').next())
+                                .and_then(|s| s.trim().parse().ok())
+                        } else {
+                            None
+                        }
+                    };
                     let socket_ip: Option<IpAddr> = req
                         .extensions()
                         .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
