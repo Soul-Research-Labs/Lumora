@@ -27,6 +27,9 @@ pub struct EncryptedNote {
 /// Tag for note store lookup — derived from recipient's viewing key.
 pub type RecipientTag = [u8; 32];
 
+/// Maximum notes stored per recipient tag before oldest entries are evicted.
+const MAX_NOTES_PER_TAG: usize = 4096;
+
 /// Simple in-memory encrypted note store.
 ///
 /// In production this would be backed by a database.
@@ -44,10 +47,14 @@ impl NoteStore {
 
     /// Store an encrypted note for a recipient.
     /// Duplicate notes (same leaf_index under the same tag) are silently ignored.
+    /// When a bucket exceeds [`MAX_NOTES_PER_TAG`], the oldest entry is evicted.
     pub fn insert(&mut self, tag: RecipientTag, note: EncryptedNote) {
         let bucket = self.notes.entry(tag).or_default();
-        // Bug #22: prevent tag collision / duplicate notes leaking between recipients.
+        // Prevent tag collision / duplicate notes leaking between recipients.
         if !bucket.iter().any(|n| n.leaf_index == note.leaf_index) {
+            if bucket.len() >= MAX_NOTES_PER_TAG {
+                bucket.remove(0);
+            }
             bucket.push(note);
         }
     }
