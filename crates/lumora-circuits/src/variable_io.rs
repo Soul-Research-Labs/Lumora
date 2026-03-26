@@ -107,10 +107,17 @@ pub struct VariableTransferWitness {
 
 impl VariableTransferWitness {
     /// Verify that value conservation holds: sum(inputs) == sum(outputs) + fee.
+    ///
+    /// Also checks that the witness vector lengths match the declared shape.
     pub fn check_conservation(&self) -> bool {
+        if self.input_values.len() != self.shape.num_inputs
+            || self.output_values.len() != self.shape.num_outputs
+        {
+            return false;
+        }
         let in_sum: u128 = self.input_values.iter().map(|&v| v as u128).sum();
         let out_sum: u128 = self.output_values.iter().map(|&v| v as u128).sum();
-        in_sum == out_sum + self.fee as u128
+        in_sum == out_sum.saturating_add(self.fee as u128)
     }
 
     /// Return the padded input values (with zeros for dummy slots).
