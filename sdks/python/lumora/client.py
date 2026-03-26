@@ -48,6 +48,9 @@ class LumoraConnectionError(Exception):
 
 _RETRYABLE_STATUS = frozenset({429, 502, 503, 504})
 
+# Maximum response body size to prevent memory exhaustion (10 MB).
+MAX_RESPONSE_BYTES = 10 * 1024 * 1024
+
 
 class LumoraClient:
     """Synchronous HTTP client for the Lumora RPC API.
@@ -103,7 +106,10 @@ class LumoraClient:
             req = Request(url, data=data, headers=headers, method=method)
             try:
                 with urlopen(req, timeout=self.timeout) as resp:  # noqa: S310
-                    return json.loads(resp.read())
+                    body = resp.read(MAX_RESPONSE_BYTES + 1)
+                    if len(body) > MAX_RESPONSE_BYTES:
+                        raise LumoraError(0, f"response exceeded {MAX_RESPONSE_BYTES} bytes")
+                    return json.loads(body)
             except HTTPError as exc:
                 if exc.code in _RETRYABLE_STATUS and attempt < self.max_retries:
                     last_error = LumoraError(exc.code, exc.read().decode())
@@ -131,7 +137,7 @@ class LumoraClient:
         """Check server health (unauthenticated). Returns structured JSON."""
         req = Request(f"{self.base_url}/health")
         with urlopen(req, timeout=self.timeout) as resp:  # noqa: S310
-            return json.loads(resp.read())
+            return json.loads(resp.read(MAX_RESPONSE_BYTES))
 
     def status(self) -> dict[str, Any]:
         """Get pool status."""
