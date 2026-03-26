@@ -185,6 +185,15 @@ impl WealthCircuit {
     pub fn build(claim: &WealthClaim, witness: &WealthWitness) -> Self {
         let n = witness.note_values.len();
         assert!(n > 0, "WealthCircuit::build requires at least one real note");
+        assert!(
+            witness.spending_keys.len() == n
+                && witness.assets.len() == n
+                && witness.randomness.len() == n
+                && witness.commitments.len() == n
+                && witness.merkle_paths.len() == n
+                && witness.merkle_indices.len() == n,
+            "all WealthWitness vectors must have the same length as note_values ({n})"
+        );
         let mut notes = Vec::with_capacity(MAX_WEALTH_NOTES);
 
         for i in 0..MAX_WEALTH_NOTES {
