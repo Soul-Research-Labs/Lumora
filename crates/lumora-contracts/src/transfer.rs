@@ -60,7 +60,12 @@ pub fn execute_transfer(
         return Err(ContractError::UnknownMerkleRoot);
     }
 
-    // 2. Check none of the nullifiers have been spent.
+    // 2. Check for duplicate nullifiers within the same transfer.
+    if request.nullifiers[0] == request.nullifiers[1] {
+        return Err(ContractError::NullifierAlreadySpent);
+    }
+
+    // 3. Check none of the nullifiers have been spent in previous transactions.
     for nf in &request.nullifiers {
         if state.is_nullifier_spent(*nf) {
             return Err(ContractError::NullifierAlreadySpent);
