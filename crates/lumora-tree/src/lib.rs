@@ -51,12 +51,24 @@ pub struct MerklePath {
 impl MerklePath {
     /// Verify that `leaf` at `self.index` produces the given `root`.
     pub fn verify(&self, root: pallas::Base, leaf: pallas::Base) -> bool {
+        if self.index >= (1u64 << DEPTH) {
+            return false;
+        }
         let computed = self.compute_root(leaf);
         computed == root
     }
 
     /// Compute the root from the leaf and authentication path.
+    ///
+    /// # Panics
+    /// Panics if `self.index >= 2^DEPTH`.
     pub fn compute_root(&self, leaf: pallas::Base) -> pallas::Base {
+        assert!(
+            self.index < (1u64 << DEPTH),
+            "MerklePath index {} out of range (max {})",
+            self.index,
+            (1u64 << DEPTH) - 1
+        );
         let mut current = leaf;
         let mut idx = self.index;
         for i in 0..DEPTH {
