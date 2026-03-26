@@ -146,16 +146,33 @@ impl BatchAccumulator {
     }
 
     /// Pad the current batch with dummy transactions to reach `min_batch_size`.
+    ///
+    /// Dummy values are derived from a domain-separated hash so they are
+    /// deterministic but indistinguishable from real transactions to an
+    /// observer who doesn't know the batch index or padding slot.
     fn pad_to_min_size(&mut self) {
+        use ff::PrimeField;
+        use lumora_primitives::poseidon;
+
+        let batch_nonce = pallas::Base::from(self.pending.len() as u64);
+        let mut slot = 0u64;
         while self.pending.len() < self.config.min_batch_size {
+            let domain = pallas::Base::from(slot);
+            let h = poseidon::hash_two(batch_nonce, domain);
+            // Derive distinct dummy field elements from the hash.
+            let nf0 = poseidon::hash_two(h, pallas::Base::from(0u64));
+            let nf1 = poseidon::hash_two(h, pallas::Base::from(1u64));
+            let cm0 = poseidon::hash_two(h, pallas::Base::from(2u64));
+            let cm1 = poseidon::hash_two(h, pallas::Base::from(3u64));
             self.pending.push(PendingTransaction {
-                proof_bytes: vec![0u8; 32], // Minimal dummy proof
-                merkle_root: pallas::Base::zero(),
-                nullifiers: [pallas::Base::zero(); 2],
-                output_commitments: [pallas::Base::zero(); 2],
+                proof_bytes: h.to_repr().to_vec(),
+                merkle_root: h,
+                nullifiers: [nf0, nf1],
+                output_commitments: [cm0, cm1],
                 fee: 0,
                 is_dummy: true,
             });
+            slot += 1;
         }
     }
 
