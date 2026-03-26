@@ -403,7 +403,7 @@ impl Wallet {
                 let mut total = 0u64;
                 for note in &candidates {
                     selected.push(*note);
-                    total += note.note.value;
+                    total = total.saturating_add(note.note.value);
                     if total >= amount {
                         return Some((selected, total));
                     }
@@ -417,7 +417,7 @@ impl Wallet {
                 let mut total = 0u64;
                 for note in &sorted {
                     selected.push(*note);
-                    total += note.note.value;
+                    total = total.saturating_add(note.note.value);
                     if total >= amount {
                         return Some((selected, total));
                     }
@@ -441,7 +441,7 @@ impl Wallet {
                 // Two-note combinations.
                 for (i, a) in candidates.iter().enumerate() {
                     for b in &candidates[i + 1..] {
-                        let total = a.note.value + b.note.value;
+                        let total = a.note.value.saturating_add(b.note.value);
                         if total >= amount {
                             let change = total - amount;
                             if best.as_ref().is_none_or(|(_, t)| *t - amount > change) {
