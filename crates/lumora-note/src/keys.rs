@@ -335,15 +335,23 @@ impl SpendingKey {
         use ff::PrimeField;
         use group::Curve;
         use subtle::ConstantTimeEq;
+
+        // Use a dummy x-coordinate when the point has no affine coordinates
+        // (identity). This avoids early returns that create timing differences
+        // between notes — the ct_eq at the end will naturally fail for dummies.
+        let dummy = pallas::Base::zero();
+
         let shared = pallas::Point::from(meta.ephemeral_pk) * self.0;
         let shared_coords = shared.to_affine().coordinates();
-        if bool::from(shared_coords.is_none()) { return None; }
-        let shared_x = *shared_coords.expect("is_some was true").x();
+        let shared_x = shared_coords
+            .map(|c| *c.x())
+            .unwrap_or(dummy);
         let tweak = lumora_primitives::poseidon::hash_one(shared_x);
 
         let my_pk_coords = self.public_key().to_affine().coordinates();
-        if bool::from(my_pk_coords.is_none()) { return None; }
-        let my_pk_x = *my_pk_coords.expect("is_some was true").x();
+        let my_pk_x = my_pk_coords
+            .map(|c| *c.x())
+            .unwrap_or(dummy);
         let expected_owner =
             lumora_primitives::poseidon::hash_two(my_pk_x, tweak);
 
