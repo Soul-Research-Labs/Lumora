@@ -70,13 +70,18 @@ impl AggregationBundle {
         &self.proofs
     }
 
-    /// Recompute the Blake2b-256 digest over all proof bytes in order.
+    /// Recompute the Blake2b-256 digest over all proof bytes and public inputs.
     fn recompute_digest(&mut self) {
         use blake2b_simd::Params;
+        use ff::PrimeField;
         let mut state = Params::new().hash_length(32).to_state();
         for p in &self.proofs {
             state.update(&(p.bytes.len() as u64).to_le_bytes());
             state.update(&p.bytes);
+            state.update(&(p.public_inputs.len() as u64).to_le_bytes());
+            for pi in &p.public_inputs {
+                state.update(pi.to_repr().as_ref());
+            }
         }
         self.digest.copy_from_slice(state.finalize().as_bytes());
     }
