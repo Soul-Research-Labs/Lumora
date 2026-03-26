@@ -211,6 +211,13 @@ export class LumoraClient {
   private readonly retryBaseMs: number;
 
   constructor(baseUrl: string, apiKey?: string, options?: LumoraClientOptions) {
+    // Validate URL scheme to prevent SSRF via non-HTTP protocols.
+    const parsed = new URL(baseUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error(
+        `Invalid URL scheme '${parsed.protocol}'. Only 'http:' and 'https:' are allowed.`,
+      );
+    }
     // Remove trailing slash
     this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.apiKey = apiKey;
