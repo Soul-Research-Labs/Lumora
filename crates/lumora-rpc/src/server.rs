@@ -74,6 +74,20 @@ impl IpRateLimiter {
     async fn check(&self, ip: IpAddr) -> bool {
         let mut map = self.buckets.lock().await;
         let now = Instant::now();
+
+        // Periodic cleanup: evict stale entries every 1 000 IPs to bound memory.
+        if map.len() > 1_000 {
+            let cutoff = RATE_LIMIT_WINDOW * 2;
+            map.retain(|_, b| now.duration_since(b.window_start) < cutoff);
+        }
+
+        // Hard cap: if the map is still too large after cleanup, reject the
+        // request to prevent unbounded HashMap growth from IP-rotating botnets.
+        const MAX_IP_ENTRIES: usize = 10_000;
+        if map.len() >= MAX_IP_ENTRIES && !map.contains_key(&ip) {
+            return false;
+        }
+
         let bucket = map.entry(ip).or_insert(IpBucket {
             count: 0,
             window_start: now,
@@ -83,12 +97,7 @@ impl IpRateLimiter {
             bucket.window_start = now;
         }
         bucket.count += 1;
-        let allowed = bucket.count <= RATE_LIMIT_PER_IP;
-        if map.len() > 10_000 {
-            let cutoff = RATE_LIMIT_WINDOW * 2;
-            map.retain(|_, b| now.duration_since(b.window_start) < cutoff);
-        }
-        allowed
+        bucket.count <= RATE_LIMIT_PER_IP
     }
 }
 
