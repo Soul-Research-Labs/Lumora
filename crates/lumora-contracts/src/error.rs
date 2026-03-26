@@ -25,6 +25,8 @@ pub enum ContractError {
     PoolBalanceOverflow,
     /// Amount is below the minimum threshold.
     BelowMinimum { minimum: u64, actual: u64 },
+    /// Too many input notes selected (circuit supports at most 2).
+    TooManyInputNotes,
     /// Proof generation / verification failed with details.
     ProofError(String),
 }
@@ -42,6 +44,7 @@ impl fmt::Display for ContractError {
             Self::TreeFull => write!(f, "merkle tree is full"),
             Self::PoolBalanceOverflow => write!(f, "deposit would overflow pool balance"),
             Self::BelowMinimum { minimum, actual } => write!(f, "amount {actual} below minimum {minimum}"),
+            Self::TooManyInputNotes => write!(f, "too many input notes selected (max 2)"),
             Self::ProofError(detail) => write!(f, "proof error: {detail}"),
         }
     }

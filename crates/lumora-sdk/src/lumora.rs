@@ -489,7 +489,7 @@ impl Lumora {
                 let i1 = self.wallet.build_input(&selected[1]);
                 Ok((i0, i1))
             }
-            _ => Err(ContractError::InsufficientPoolBalance),
+            _ => Err(ContractError::TooManyInputNotes),
         }
     }
 
