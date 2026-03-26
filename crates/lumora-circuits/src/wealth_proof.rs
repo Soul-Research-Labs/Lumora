@@ -184,6 +184,7 @@ impl WealthCircuit {
     /// Build a wealth circuit from native witness data.
     pub fn build(claim: &WealthClaim, witness: &WealthWitness) -> Self {
         let n = witness.note_values.len();
+        assert!(n > 0, "WealthCircuit::build requires at least one real note");
         let mut notes = Vec::with_capacity(MAX_WEALTH_NOTES);
 
         for i in 0..MAX_WEALTH_NOTES {
@@ -250,6 +251,8 @@ impl Circuit<pallas::Base> for WealthCircuit {
         // and collect (value * active) for summation.
         let mut weighted_values: Vec<AssignedCell<pallas::Base, pallas::Base>> = Vec::new();
         let mut roots: Vec<AssignedCell<pallas::Base, pallas::Base>> = Vec::new();
+        // Track the first active cell to constrain note_0 is always real.
+        let mut first_active_cell: Option<AssignedCell<pallas::Base, pallas::Base>> = None;
 
         for (i, note) in self.notes.iter().enumerate() {
             // Assign note witness.
@@ -377,7 +380,25 @@ impl Circuit<pallas::Base> for WealthCircuit {
                     region.constrain_equal(sq_cell.cell(), a0.cell())
                 },
             )?;
+
+            // Save the first note's active cell for the non-empty witness check below.
+            if i == 0 {
+                first_active_cell = Some(active.clone());
+            }
         }
+
+        // Enforce note_0 is always real (active == 1).
+        // Without this, an all-padding witness could supply an arbitrary Merkle root as a public input.
+        let active_0 = first_active_cell.expect("notes vec is non-empty (asserted in build)");
+        layouter.assign_region(
+            || "require_active_0_is_one",
+            |mut region| {
+                let one = region.assign_advice_from_constant(
+                    || "one", config.advice[0], 0, pallas::Base::one(),
+                )?;
+                region.constrain_equal(active_0.cell(), one.cell())
+            },
+        )?;
 
         // Sum all weighted values.
         let total = layouter.assign_region(

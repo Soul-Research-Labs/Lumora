@@ -57,15 +57,19 @@ impl JitterConfig {
     }
 }
 
-/// Axum middleware that adds random jitter to POST (write) responses.
+/// Axum middleware that adds random jitter to state-mutating responses.
 ///
-/// GET requests (status, fees, health) are not delayed. Only state-mutating
-/// POST requests receive jitter to decorrelate response timing.
+/// GET requests (status, fees, health) are not delayed. POST, PUT, PATCH, and
+/// DELETE requests receive jitter to decorrelate response timing.
 pub async fn jitter_middleware(
     req: Request<axum::body::Body>,
     next: Next,
 ) -> Response {
-    let is_write = req.method() == axum::http::Method::POST;
+    let method = req.method().clone();
+    let is_write = method == axum::http::Method::POST
+        || method == axum::http::Method::PUT
+        || method == axum::http::Method::PATCH
+        || method == axum::http::Method::DELETE;
     let response = next.run(req).await;
 
     if is_write {

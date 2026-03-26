@@ -220,7 +220,7 @@ fn migrate_nullifiers(wallet_path: &str, chain_id: u64, app_id: u64, dry_run: bo
     use lumora_note::commitment::NoteCommitment;
 
     let path = std::path::Path::new(wallet_path);
-    let wallet = match lumora_client::wallet::Wallet::load(path) {
+    let mut wallet = match lumora_client::wallet::Wallet::load(path) {
         Ok(w) => w,
         Err(e) => {
             eprintln!("Error loading wallet: {e}");
@@ -251,10 +251,17 @@ fn migrate_nullifiers(wallet_path: &str, chain_id: u64, app_id: u64, dry_run: bo
         println!();
         println!("Dry run complete. No changes written.");
     } else {
-        // In production, this would update the on-chain nullifier set.
-        // For now, the migration just validates the re-derivation.
+        // Record the nullifier domain in the wallet so future transactions
+        // automatically derive V2 nullifiers for this chain/app.
+        wallet.nullifier_domain = Some([chain_id, app_id]);
+        if let Err(e) = wallet.save(path) {
+            eprintln!("Error saving wallet after migration: {e}");
+            std::process::exit(1);
+        }
         println!();
-        println!("Migration complete. {} nullifier(s) re-derived.", wallet.note_count());
+        println!("Migration complete. {} nullifier(s) migrated to V2 domain.", wallet.note_count());
+        println!("Wallet saved with domain chain_id={chain_id} app_id={app_id}.");
+        println!("Future transactions will use V2 nullifier derivation.");
         println!("Note: On-chain nullifier set update must be coordinated");
         println!("with the pool operator (see docs/upgrade-runbook.md).");
     }
@@ -321,14 +328,23 @@ fn run_interactive() {
                     Some(v) => v,
                     None => { println!("Usage: send <recipient_hex> <amount>"); continue; }
                 };
-                // Derive an encryption point from the owner field.
-                let recipient_scalar: Option<pallas::Scalar> = ff::PrimeField::from_repr(
-                    ff::PrimeField::to_repr(&recipient),
-                ).into();
-                let recipient_pk = match recipient_scalar {
-                    Some(s) => pallas::Point::generator() * s,
-                    None => { println!("Invalid recipient key"); continue; }
+                // Hash the recipient owner field through Poseidon to derive a
+                // deterministic scalar suitable for `scalar · G`. Direct
+                // base-to-scalar bit reinterpretation is unsound because it
+                // may fail for values ≥ the scalar modulus.
+                let recipient_scalar = {
+                    use ff::PrimeField;
+                    let hashed = lumora_primitives::poseidon::hash_one(recipient);
+                    let repr = hashed.to_repr();
+                    pallas::Scalar::from_repr(repr)
+                        .unwrap_or_else(|| {
+                            let mut r = repr;
+                            r[31] &= 0x3F;
+                            pallas::Scalar::from_repr(r)
+                                .expect("cleared top bits is always valid scalar")
+                        })
                 };
+                let recipient_pk = pallas::Point::generator() * recipient_scalar;
                 match lumora.send(recipient, recipient_pk, amount) {
                     Ok(result) => {
                         println!("Sent {}. Proof size: {} bytes. Nullifiers spent: 2",
@@ -376,8 +392,9 @@ fn run_interactive() {
                 let sk_hex = convert::field_to_hex(
                     lumora_note::keys::scalar_to_base(lumora.wallet.spending_key().inner()),
                 );
-                println!("Spending key: {sk_hex}");
-                println!("(Keep this secret! Anyone with this key can spend your notes.)");
+                // Print to stderr to avoid spending key appearing in stdout logs.
+                eprintln!("Spending key: {sk_hex}");
+                eprintln!("(Keep this secret! Anyone with this key can spend your notes.)");
             }
             "generate-mnemonic" | "gen-mnemonic" => {
                 let (phrase, _key) = lumora_note::SpendingKey::generate_mnemonic(rand::rngs::OsRng);

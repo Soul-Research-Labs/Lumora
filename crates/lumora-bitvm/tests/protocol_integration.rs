@@ -54,7 +54,7 @@ fn honest_trace() -> VerificationTrace {
     let w4 = b"ipa-round-1".to_vec();
     let output4 = recompute_step_output(StepKind::IpaRound, &output3, &w4);
 
-    let w5 = b"final-check-data".to_vec();
+    let w5 = b"final-check-\x01".to_vec(); // last byte 0x01 = verification passed
     let output5 = recompute_step_output(StepKind::FinalCheck, &output4, &w5);
 
     let steps = vec![

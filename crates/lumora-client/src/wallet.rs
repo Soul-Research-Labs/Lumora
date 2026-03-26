@@ -128,6 +128,10 @@ pub struct Wallet {
     /// Transaction history.
     #[serde(default)]
     history: Vec<TxRecord>,
+    /// Optional nullifier domain after V2 migration: [chain_id, app_id].
+    /// When set, all nullifier derivations use the V2 cross-domain formula.
+    #[serde(default)]
+    pub nullifier_domain: Option<[u64; 2]>,
 }
 
 /// Default viewing key placeholder (overwritten in post-deserialize).
@@ -153,6 +157,7 @@ impl Wallet {
             notes: Vec::new(),
             spent_nullifiers: std::collections::HashSet::new(),
             history: Vec::new(),
+            nullifier_domain: None,
         }
     }
 
@@ -163,9 +168,12 @@ impl Wallet {
 
     /// Save the wallet to a JSON file.
     pub fn save(&self, path: &std::path::Path) -> std::io::Result<()> {
-        let json = serde_json::to_string_pretty(self)
+        use zeroize::Zeroize;
+        let mut json = serde_json::to_string_pretty(self)
             .map_err(std::io::Error::other)?;
-        write_sensitive_file(path, json)
+        let result = write_sensitive_file(path, json.as_bytes());
+        json.zeroize();
+        result
     }
 
     /// Load the wallet from a JSON file.
@@ -286,6 +294,17 @@ impl Wallet {
         let mut imported = 0usize;
         for owned in bundle.notes {
             if !self.has_leaf(owned.leaf_index) && owned.note.owner == self.owner_field {
+                // Validate the stored commitment matches the note's actual fields.
+                let randomness_base = scalar_to_base(owned.note.randomness);
+                let expected_cm = circuit_commitment(
+                    owned.note.owner,
+                    owned.note.value,
+                    owned.note.asset,
+                    randomness_base,
+                );
+                if owned.commitment != expected_cm {
+                    continue;
+                }
                 self.notes.push(owned);
                 imported += 1;
             }
@@ -325,12 +344,21 @@ impl Wallet {
     }
 
     /// Total balance across all unspent notes (for a given asset).
+    ///
+    /// Returns `None` if the total would overflow `u64`. Use `checked_balance`
+    /// for callers that need to distinguish overflow from a large-but-valid balance.
     pub fn balance(&self, asset: u64) -> u64 {
+        self.checked_balance(asset).unwrap_or(u64::MAX)
+    }
+
+    /// Total balance across all unspent notes (for a given asset).
+    ///
+    /// Returns `None` if the total overflows `u64`.
+    pub fn checked_balance(&self, asset: u64) -> Option<u64> {
         self.notes
             .iter()
             .filter(|n| n.note.asset == asset)
             .try_fold(0u64, |acc, n| acc.checked_add(n.note.value))
-            .unwrap_or(u64::MAX)
     }
 
     /// Number of unspent notes.

@@ -238,7 +238,7 @@ mod tests {
         let mut state = PrivacyPoolState::new();
         let event = deposit_event(42, 1000, 0);
         mgr.log_event(&event).unwrap();
-        replay_event(&mut state, &event);
+        replay_event(&mut state, &event).unwrap();
 
         let meta = mgr.take_snapshot(&mut state).unwrap();
         assert_eq!(meta.id, 0);
@@ -248,7 +248,7 @@ mod tests {
         // Add one more event after snapshot (in WAL only).
         let event2 = deposit_event(43, 500, 1);
         mgr.log_event(&event2).unwrap();
-        replay_event(&mut state, &event2);
+        replay_event(&mut state, &event2).unwrap();
 
         // Simulate crash: re-open.
         drop(mgr);
@@ -274,7 +274,7 @@ mod tests {
         for i in 0..4u64 {
             let event = deposit_event(i + 10, 100, i);
             mgr.log_event(&event).unwrap();
-            replay_event(&mut state, &event);
+            replay_event(&mut state, &event).unwrap();
             mgr.take_snapshot(&mut state).unwrap();
         }
 
@@ -309,7 +309,7 @@ mod tests {
         for i in 0..3u64 {
             let event = deposit_event(i + 100, 200 * (i + 1), i);
             mgr.log_event(&event).unwrap();
-            replay_event(&mut state, &event);
+            replay_event(&mut state, &event).unwrap();
             mgr.take_snapshot(&mut state).unwrap();
         }
 

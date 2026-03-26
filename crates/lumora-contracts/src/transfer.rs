@@ -49,6 +49,12 @@ pub fn execute_transfer(
     verifier: &lumora_prover::VerifierParams,
     request: &TransferRequest,
 ) -> Result<TransferReceipt, ContractError> {
+    // 0. Guard against trivially invalid requests (same nullifier used twice or
+    //    zero-value transfers that contribute nothing to the pool).
+    if request.nullifiers[0] == request.nullifiers[1] {
+        return Err(ContractError::NullifierAlreadySpent);
+    }
+
     // 1. Check the Merkle root is known (recent).
     if !state.is_known_root(request.merkle_root) {
         return Err(ContractError::UnknownMerkleRoot);
@@ -62,7 +68,8 @@ pub fn execute_transfer(
     }
 
     // 3. Verify the ZK proof.
-    let valid = lumora_verifier::verify_transfer(
+    // Distinguish invalid proof (constraint failure) from verifier malfunction.
+    match lumora_verifier::verify_transfer(
         &verifier.params,
         &verifier.vk,
         &request.proof_bytes,
@@ -70,9 +77,14 @@ pub fn execute_transfer(
         &request.nullifiers,
         &request.output_commitments,
         request.fee,
-    );
-    if valid.is_err() {
-        return Err(ContractError::InvalidProof);
+    ) {
+        Ok(()) => {}
+        Err(halo2_proofs::plonk::Error::ConstraintSystemFailure) => {
+            return Err(ContractError::InvalidProof);
+        }
+        Err(e) => {
+            return Err(ContractError::ProofError(format!("verifier error: {e:?}")));
+        }
     }
 
     // 4. Register nullifiers as spent (AFTER proof verification).

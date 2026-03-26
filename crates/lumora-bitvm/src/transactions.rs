@@ -42,6 +42,7 @@ use k256::{AffinePoint, ProjectivePoint, Scalar, U256};
 use crate::protocol::{Assertion, AssertionId};
 use crate::script::{ScriptFragment, build_disprove_script};
 use crate::trace::StepKind;
+use lumora_contracts::BridgeError;
 
 // ---------------------------------------------------------------------------
 // Transaction types (portable — no dependency on rust-bitcoin yet)
@@ -153,7 +154,7 @@ pub struct AssertTxOutput {
 /// Taproot output with two spend paths:
 /// - **Challenge leaf**: spendable by (operator + challenger) MuSig2 key
 /// - **Timeout leaf**: spendable by operator after `timeout_blocks`
-pub fn build_assert_tx(params: &AssertTxParams) -> AssertTxOutput {
+pub fn build_assert_tx(params: &AssertTxParams) -> Result<AssertTxOutput, BridgeError> {
     // Build the timeout leaf script:
     // <timeout_blocks> OP_CSV OP_DROP <operator_pubkey> OP_CHECKSIG
     let timeout_script = build_timeout_leaf_script(
@@ -183,7 +184,9 @@ pub fn build_assert_tx(params: &AssertTxParams) -> AssertTxOutput {
     );
 
     let bond_value = params.funding_value.checked_sub(params.fee_sats)
-        .expect("fee exceeds funding value");
+        .ok_or_else(|| BridgeError::FeeTooHigh(
+            format!("fee {} exceeds funding value {}", params.fee_sats, params.funding_value)
+        ))?;
 
     let tx = Transaction {
         version: 2,
@@ -199,11 +202,11 @@ pub fn build_assert_tx(params: &AssertTxParams) -> AssertTxOutput {
         }],
     };
 
-    AssertTxOutput {
+    Ok(AssertTxOutput {
         tx,
         taproot_tree,
         assertion_id: params.assertion.id,
-    }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -240,7 +243,7 @@ pub struct DisproveTxParams {
 /// This transaction spends the Assert TX output via the disprove
 /// Taproot leaf script, proving that a specific step in the operator's
 /// trace was incorrectly computed.
-pub fn build_disprove_tx(params: &DisproveTxParams) -> Transaction {
+pub fn build_disprove_tx(params: &DisproveTxParams) -> Result<Transaction, BridgeError> {
     let disprove_script = build_disprove_script(params.step_kind);
 
     // Build the witness stack:
@@ -256,9 +259,11 @@ pub fn build_disprove_tx(params: &DisproveTxParams) -> Transaction {
     ];
 
     let payout_value = params.assert_value.checked_sub(params.fee_sats)
-        .expect("fee exceeds assert value");
+        .ok_or_else(|| BridgeError::FeeTooHigh(
+            format!("fee {} exceeds assert value {}", params.fee_sats, params.assert_value)
+        ))?;
 
-    Transaction {
+    Ok(Transaction {
         version: 2,
         locktime: 0,
         inputs: vec![TxIn {
@@ -270,7 +275,7 @@ pub fn build_disprove_tx(params: &DisproveTxParams) -> Transaction {
             value: payout_value,
             script_pubkey: params.challenger_script_pubkey.clone(),
         }],
-    }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -297,11 +302,13 @@ pub struct TimeoutTxParams {
 /// Spends the Assert TX output via the timeout Taproot leaf, which
 /// requires the operator's signature and that `timeout_blocks` have
 /// elapsed since the Assert TX was mined (enforced by OP_CSV).
-pub fn build_timeout_tx(params: &TimeoutTxParams) -> Transaction {
+pub fn build_timeout_tx(params: &TimeoutTxParams) -> Result<Transaction, BridgeError> {
     let payout_value = params.assert_value.checked_sub(params.fee_sats)
-        .expect("fee exceeds assert value");
+        .ok_or_else(|| BridgeError::FeeTooHigh(
+            format!("fee {} exceeds assert value {}", params.fee_sats, params.assert_value)
+        ))?;
 
-    Transaction {
+    Ok(Transaction {
         version: 2,
         locktime: 0,
         inputs: vec![TxIn {
@@ -314,7 +321,7 @@ pub fn build_timeout_tx(params: &TimeoutTxParams) -> Transaction {
             value: payout_value,
             script_pubkey: params.operator_script_pubkey.clone(),
         }],
-    }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -662,7 +669,7 @@ mod tests {
             timeout_blocks: 144,
         };
 
-        let result = build_assert_tx(&params);
+        let result = build_assert_tx(&params).expect("build_assert_tx should succeed");
         assert_eq!(result.tx.version, 2);
         assert_eq!(result.tx.inputs.len(), 1);
         assert_eq!(result.tx.outputs.len(), 1);
@@ -697,7 +704,7 @@ mod tests {
             taproot_tree: TaprootTree::Leaf(TaprootLeaf { version: 0xC0, script_bytes: vec![0x51] }),
         };
 
-        let tx = build_disprove_tx(&params);
+        let tx = build_disprove_tx(&params).expect("build_disprove_tx should succeed");
         assert_eq!(tx.version, 2);
         assert_eq!(tx.inputs.len(), 1);
         assert_eq!(tx.outputs.len(), 1);
@@ -722,7 +729,7 @@ mod tests {
             timeout_blocks: 144,
         };
 
-        let tx = build_timeout_tx(&params);
+        let tx = build_timeout_tx(&params).expect("build_timeout_tx should succeed");
         assert_eq!(tx.version, 2);
         assert_eq!(tx.inputs.len(), 1);
         assert_eq!(tx.outputs.len(), 1);

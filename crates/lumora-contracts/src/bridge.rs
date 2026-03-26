@@ -30,6 +30,8 @@ pub enum BridgeError {
     VerificationFailed(String),
     /// Nullifier sync failed.
     NullifierSyncFailed(String),
+    /// Transaction fee exceeds the available funding value.
+    FeeTooHigh(String),
 }
 
 impl std::fmt::Display for BridgeError {
@@ -41,6 +43,7 @@ impl std::fmt::Display for BridgeError {
             Self::ConnectionError(msg) => write!(f, "connection error: {msg}"),
             Self::VerificationFailed(msg) => write!(f, "verification failed: {msg}"),
             Self::NullifierSyncFailed(msg) => write!(f, "nullifier sync failed: {msg}"),
+            Self::FeeTooHigh(msg) => write!(f, "fee too high: {msg}"),
         }
     }
 }

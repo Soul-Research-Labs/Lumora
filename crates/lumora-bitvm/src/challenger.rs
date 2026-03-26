@@ -127,10 +127,14 @@ impl Challenger {
             }
         }
 
-        // Check the claimed result against what the final step implies
+        // Check the claimed result against what the final step implies.
+        // The FinalCheck witness encodes the verification result as a single
+        // byte (1 = verified, 0 = failed) appended after the 32-byte input
+        // state. Using output_hash != [0u8;32] is always true for SHA-256
+        // and therefore cannot distinguish honest from dishonest results.
         let final_step = steps.last().unwrap();
         let expected_result = final_step.kind == StepKind::FinalCheck
-            && final_step.output_hash != [0u8; 32];
+            && final_step.witness.last() == Some(&1u8);
 
         if assertion.claimed_result != expected_result {
             return Some(final_step.index);
@@ -237,7 +241,7 @@ impl Challenger {
             fee_sats: 1_000,
             operator_pubkey: obs.operator_pubkey,
             taproot_tree: obs.taproot_tree.clone(),
-        });
+        }).ok()?;
 
         Some(disprove_tx)
     }
@@ -361,7 +365,7 @@ mod tests {
         let witness0 = vec![0x01];
         let output0 = recompute_step_output(StepKind::TranscriptInit, &input0, &witness0);
 
-        let witness1 = vec![0x02];
+        let witness1 = vec![0x01];  // last byte 0x01 = verification passed (FinalCheck)
         let output1 = recompute_step_output(StepKind::FinalCheck, &output0, &witness1);
 
         vec![

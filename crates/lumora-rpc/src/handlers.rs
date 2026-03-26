@@ -168,7 +168,7 @@ pub async fn transfer(
         merkle_root,
         nullifiers: [nf0, nf1],
         output_commitments: [cm0, cm1],
-        fee: 0,
+        fee: req.fee,
         domain_chain_id: req.domain_chain_id,
         domain_app_id: req.domain_app_id,
     };
@@ -215,7 +215,7 @@ pub async fn withdraw(
         nullifiers: [nf0, nf1],
         output_commitments: [cm0, cm1],
         amount: req.amount,
-        fee: 0,
+        fee: req.fee,
         recipient,
         domain_chain_id: req.domain_chain_id,
         domain_app_id: req.domain_app_id,
@@ -466,12 +466,21 @@ pub async fn epoch_roots(
 pub async fn stealth_scan(
     State(state): State<AppState>,
     Json(req): Json<StealthScanReq>,
-) -> Json<StealthScanResp> {
+) -> Result<Json<StealthScanResp>, (StatusCode, Json<ErrorResp>)> {
+    // Bug #24: enforce from_leaf_index == 0 to prevent inference attacks.
+    // A non-zero start offset reveals which leaves a client has already seen,
+    // which can be used to fingerprint or de-anonymize the client.
+    if req.from_leaf_index != 0 {
+        return Err(bad_request(
+            "from_leaf_index must be 0; partial scans leak scanning progress",
+        ));
+    }
     let node = state.read().await;
-    let all = node.note_store.all_notes_since(req.from_leaf_index);
+    let all = node.note_store.all_notes_since(0);
+    let effective_limit = req.limit.min(crate::types::MAX_SCAN_LIMIT);
     let notes: Vec<EncryptedNoteResp> = all
         .into_iter()
-        .take(req.limit)
+        .take(effective_limit)
         .map(|n| EncryptedNoteResp {
             leaf_index: n.leaf_index,
             commitment: hex::encode(n.commitment),
@@ -480,7 +489,7 @@ pub async fn stealth_scan(
         })
         .collect();
     let count = notes.len();
-    Json(StealthScanResp { notes, count })
+    Ok(Json(StealthScanResp { notes, count }))
 }
 
 // ── BitVM Bridge ───────────────────────────────────────────────────

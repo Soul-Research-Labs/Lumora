@@ -37,8 +37,10 @@ pub fn generator_h() -> pallas::Point {
     let seed = poseidon::hash_two(a, b);
 
     // Try-and-increment: hash seed with counter until we find a valid curve point.
+    // Cap at 256 attempts to avoid an infinite loop on unexpected curve/hash changes.
+    const MAX_GENERATOR_ATTEMPTS: u32 = 256;
     let mut counter = pallas::Base::zero();
-    loop {
+    for attempt in 0..MAX_GENERATOR_ATTEMPTS {
         let x = poseidon::hash_two(seed, counter);
         let repr = x.to_repr();
         let ct_opt = pallas::Affine::from_bytes(&repr);
@@ -50,7 +52,13 @@ pub fn generator_h() -> pallas::Point {
             }
         }
         counter += pallas::Base::one();
+        let _ = attempt; // suppress unused warning on the last iteration
     }
+    panic!(
+        "Pedersen generator_h: no valid curve point found after {} attempts; \
+         check Poseidon hash or curve parameters",
+        MAX_GENERATOR_ATTEMPTS
+    );
 }
 
 /// Pedersen commitment: `C = value·G + randomness·H`

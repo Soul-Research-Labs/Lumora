@@ -276,6 +276,7 @@ async fn transfer_invalid_proof_hex_rejected() {
         output_commitments: [zero_field_hex(), zero_field_hex()],
         domain_chain_id: None,
         domain_app_id: None,
+        fee: 0,
     };
     let resp = app()
         .oneshot(post_json("/v1/transfer", &req))
@@ -472,6 +473,7 @@ async fn transfer_unknown_root_rejected() {
         output_commitments: [zero_field_hex(), zero_field_hex()],
         domain_chain_id: None,
         domain_app_id: None,
+        fee: 0,
     };
     let resp = app().oneshot(post_json("/v1/transfer", &req)).await.unwrap();
     // Should be 422 (unknown root) or 400 depending on implementation

@@ -15,6 +15,7 @@ use lumora_prover::{
     self, InputNote, OutputNote, ProverParams, WithdrawProverParams,
 };
 use lumora_tree::IncrementalMerkleTree;
+use ff::PrimeField;
 use pasta_curves::pallas;
 
 use crate::batch_accumulator::{BatchAccumulator, BatchConfig};
@@ -230,10 +231,25 @@ impl LumoraNode {
     /// pool state and note store from disk.
     pub fn init_recover(dir: &std::path::Path) -> std::io::Result<Self> {
         let params = lumora_prover::load_params(dir.join("srs.bin"))?;
-        let state = lumora_contracts::PrivacyPoolState::load(&dir.join("pool_state.json"))?;
+        let mut state = lumora_contracts::PrivacyPoolState::load(&dir.join("pool_state.json"))?;
         let note_store = crate::note_store::NoteStore::load(dir.join("note_store.json"))?;
 
-        let tree = state.tree().clone();
+        let mut tree = state.tree().clone();
+
+        // Verify that the recovered tree root matches the pool's recorded state root.
+        // A mismatch indicates on-disk corruption or a partial save; fail fast so
+        // the operator can restore from a known-good backup.
+        let tree_root = tree.root();
+        let state_root = state.current_root();
+        if tree_root != state_root {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "State recovery: Merkle tree root does not match pool state root — \
+                     data may be corrupt. tree_root={tree_root:?} state_root={state_root:?}"
+                ),
+            ));
+        }
 
         let (transfer_prover, transfer_verifier) =
             lumora_prover::setup_from_params(params.clone())
@@ -274,7 +290,14 @@ impl LumoraNode {
                 amount: dep.amount,
             }) {
                 Ok(_) => { self.tree.insert(dep.commitment); }
-                Err(e) => { eprintln!("bridge deposit failed: {e}"); }
+                Err(e) => {
+                    // A deposit error means the pool and tree have diverged;
+                    // propagate as a bridge error so the caller can stop and
+                    // perform reconciliation rather than silently continuing.
+                    return Err(BridgeError::DepositRejected(
+                        format!("deposit commitment {} failed: {e}", hex::encode(dep.commitment.to_repr()))
+                    ));
+                }
             }
         }
         Ok(count)

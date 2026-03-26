@@ -34,7 +34,7 @@ impl WalletManager {
     ///
     /// Returns an error if a wallet with this label already exists.
     pub fn create_wallet(&mut self, label: &str) -> Result<&Wallet, WalletManagerError> {
-        if self.wallets.contains_key(label) || self.wallet_path(label).exists() {
+        if self.wallets.contains_key(label) || self.wallet_path(label)?.exists() {
             return Err(WalletManagerError::AlreadyExists(label.to_string()));
         }
 
@@ -63,7 +63,7 @@ impl WalletManager {
     pub fn save_wallet(&self, label: &str) -> Result<(), WalletManagerError> {
         let wallet = self.wallets.get(label)
             .ok_or_else(|| WalletManagerError::NotFound(label.to_string()))?;
-        let path = self.wallet_path(label);
+        let path = self.wallet_path(label)?;
         let json = serde_json::to_string_pretty(wallet)
             .map_err(|e| WalletManagerError::Io(e.to_string()))?;
         if let Some(parent) = path.parent() {
@@ -111,7 +111,7 @@ impl WalletManager {
     /// Remove a wallet (from cache and disk).
     pub fn remove_wallet(&mut self, label: &str) -> Result<(), WalletManagerError> {
         self.wallets.remove(label);
-        let path = self.wallet_path(label);
+        let path = self.wallet_path(label)?;
         if path.exists() {
             std::fs::remove_file(&path)
                 .map_err(|e| WalletManagerError::Io(e.to_string()))?;
@@ -136,7 +136,7 @@ impl WalletManager {
         &mut self,
         label: &str,
     ) -> Result<(String, &Wallet), WalletManagerError> {
-        if self.wallets.contains_key(label) || self.wallet_path(label).exists() {
+        if self.wallets.contains_key(label) || self.wallet_path(label)?.exists() {
             return Err(WalletManagerError::AlreadyExists(label.to_string()));
         }
 
@@ -155,7 +155,7 @@ impl WalletManager {
         label: &str,
         phrase: &str,
     ) -> Result<&Wallet, WalletManagerError> {
-        if self.wallets.contains_key(label) || self.wallet_path(label).exists() {
+        if self.wallets.contains_key(label) || self.wallet_path(label)?.exists() {
             return Err(WalletManagerError::AlreadyExists(label.to_string()));
         }
 
@@ -195,7 +195,7 @@ impl WalletManager {
         backup_path: &Path,
         passphrase: &str,
     ) -> Result<&Wallet, WalletManagerError> {
-        if self.wallets.contains_key(label) || self.wallet_path(label).exists() {
+        if self.wallets.contains_key(label) || self.wallet_path(label)?.exists() {
             return Err(WalletManagerError::AlreadyExists(label.to_string()));
         }
         let wallet = Wallet::load_encrypted(backup_path, passphrase)
@@ -204,17 +204,19 @@ impl WalletManager {
         Ok(&self.wallets[label])
     }
 
-    fn wallet_path(&self, label: &str) -> PathBuf {
-        assert!(
-            !label.contains('/') && !label.contains('\\')
-            && !label.contains("..") && !label.is_empty(),
-            "invalid wallet label"
-        );
-        self.base_dir.join(format!("{}.json", label))
+    fn wallet_path(&self, label: &str) -> Result<PathBuf, WalletManagerError> {
+        if label.is_empty()
+            || label.contains('/')
+            || label.contains('\\')
+            || label.contains("..")
+        {
+            return Err(WalletManagerError::InvalidLabel(label.to_string()));
+        }
+        Ok(self.base_dir.join(format!("{}.json", label)))
     }
 
     fn load_wallet(&mut self, label: &str) -> Result<(), WalletManagerError> {
-        let path = self.wallet_path(label);
+        let path = self.wallet_path(label)?;
         if !path.exists() {
             return Err(WalletManagerError::NotFound(label.to_string()));
         }
@@ -233,6 +235,8 @@ pub enum WalletManagerError {
     AlreadyExists(String),
     NotFound(String),
     Io(String),
+    /// The wallet label contains invalid characters or path components.
+    InvalidLabel(String),
 }
 
 impl std::fmt::Display for WalletManagerError {
@@ -241,6 +245,7 @@ impl std::fmt::Display for WalletManagerError {
             Self::AlreadyExists(l) => write!(f, "wallet '{}' already exists", l),
             Self::NotFound(l) => write!(f, "wallet '{}' not found", l),
             Self::Io(e) => write!(f, "I/O error: {}", e),
+            Self::InvalidLabel(l) => write!(f, "invalid wallet label '{}'", l),
         }
     }
 }

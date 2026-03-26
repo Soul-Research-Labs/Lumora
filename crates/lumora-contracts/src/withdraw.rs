@@ -98,8 +98,15 @@ pub fn execute_withdraw(
         request.amount,
         request.fee,
     );
-    if valid.is_err() {
-        return Err(ContractError::InvalidProof);
+    // Distinguish invalid proof (constraint failure) from verifier malfunction.
+    match valid {
+        Ok(()) => {}
+        Err(halo2_proofs::plonk::Error::ConstraintSystemFailure) => {
+            return Err(ContractError::InvalidProof);
+        }
+        Err(e) => {
+            return Err(ContractError::ProofError(format!("verifier error: {e:?}")));
+        }
     }
 
     // 5. Register nullifiers.

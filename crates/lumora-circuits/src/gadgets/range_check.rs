@@ -84,6 +84,12 @@ impl RangeCheckConfig {
                         let val_u64 = u64::from_le_bytes(
                             repr[0..8].try_into().expect("field repr is 32 bytes"),
                         );
+                        // Verify no upper bits: bytes 8..31 must all be zero.
+                        assert_eq!(
+                            *v,
+                            pallas::Base::from(val_u64),
+                            "range_check_u64: value has bits above bit 63 (exceeds u64 range)"
+                        );
                         let mut qs = Vec::with_capacity(65);
                         let mut q = val_u64;
                         for _ in 0..64 {

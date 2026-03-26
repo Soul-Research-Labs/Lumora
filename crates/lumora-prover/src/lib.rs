@@ -252,8 +252,11 @@ pub fn prove_transfer(
         // Get Merkle path.
         let path = tree
             .witness(inp.merkle_index)
-            .expect("input note must be in tree");
+            .ok_or(plonk::Error::Synthesis)?; // Bug #16: note not in tree → synthesis error
 
+        if path.siblings.len() != DEPTH {
+            return Err(plonk::Error::Synthesis); // Bug #17: path length mismatch
+        }
         let mut siblings = [pallas::Base::zero(); DEPTH];
         siblings.copy_from_slice(&path.siblings);
 
@@ -399,8 +402,11 @@ pub fn prove_withdraw(
 
         let path = tree
             .witness(inp.merkle_index)
-            .expect("input note must be in tree");
+            .ok_or(plonk::Error::Synthesis)?; // Bug #16: note not in tree → synthesis error
 
+        if path.siblings.len() != DEPTH {
+            return Err(plonk::Error::Synthesis); // Bug #17: path length mismatch
+        }
         let mut siblings = [pallas::Base::zero(); DEPTH];
         siblings.copy_from_slice(&path.siblings);
 

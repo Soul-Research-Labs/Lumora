@@ -1293,6 +1293,7 @@ dependencies = [
  "lumora-bitvm",
  "lumora-client",
  "lumora-note",
+ "lumora-primitives",
  "lumora-sdk",
  "pasta_curves",
  "rand 0.8.5",

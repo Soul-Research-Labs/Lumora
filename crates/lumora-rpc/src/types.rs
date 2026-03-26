@@ -39,6 +39,9 @@ pub struct TransferReq {
     /// Optional domain application ID for V2 domain-separated nullifiers.
     #[serde(default)]
     pub domain_app_id: Option<u64>,
+    /// Fee the sender consents to pay (in base units). Defaults to 0.
+    #[serde(default)]
+    pub fee: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -72,6 +75,9 @@ pub struct WithdrawReq {
     /// Optional domain application ID for V2 domain-separated nullifiers.
     #[serde(default)]
     pub domain_app_id: Option<u64>,
+    /// Fee the sender consents to pay (in base units). Defaults to 0.
+    #[serde(default)]
+    pub fee: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -222,6 +228,10 @@ pub struct StealthScanReq {
 fn default_scan_limit() -> usize {
     1000
 }
+
+/// Maximum number of notes the stealth-scan endpoint will return in a single
+/// request, regardless of the `limit` field in the request.
+pub const MAX_SCAN_LIMIT: usize = 10_000;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StealthScanResp {

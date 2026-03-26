@@ -144,6 +144,31 @@ pub fn batch_verify_transfers(
     batch.finalize(&verifier.params, &verifier.vk)
 }
 
+/// Verify multiple transfer proofs and return the index of the first invalid proof,
+/// or `Ok(())` if all proofs are valid.
+///
+/// Performs individual (sequential) verification so the specific failing proof
+/// can be identified. Use `batch_verify_transfers` when you only need a pass/fail.
+pub fn find_first_invalid_transfer(
+    verifier: &lumora_prover::VerifierParams,
+    items: &[TransferBatchItem],
+) -> Result<(), usize> {
+    for (i, item) in items.iter().enumerate() {
+        if verify_transfer(
+            &verifier.params,
+            &verifier.vk,
+            &item.proof_bytes,
+            item.merkle_root,
+            &item.nullifiers,
+            &item.output_commitments,
+            item.fee,
+        ).is_err() {
+            return Err(i);
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

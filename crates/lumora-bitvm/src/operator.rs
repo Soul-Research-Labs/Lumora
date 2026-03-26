@@ -95,7 +95,7 @@ impl Operator {
             funding_value,
             fee_sats: 1_000,
             timeout_blocks: self.config.challenge_timeout_blocks,
-        });
+        }).map_err(|e| BridgeError::CommitFailed(e.to_string()))?;
 
         // Register in protocol
         self.protocol

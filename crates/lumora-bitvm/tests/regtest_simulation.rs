@@ -97,7 +97,7 @@ fn test_assert_tx_structure() {
         timeout_blocks: 144,
     };
 
-    let result = build_assert_tx(&params);
+    let result = build_assert_tx(&params).expect("build_assert_tx should succeed");
 
     // Verify TX structure
     assert_eq!(result.tx.version, 2);
@@ -142,7 +142,7 @@ fn test_disprove_tx_value_flow() {
         taproot_tree: TaprootTree::Leaf(TaprootLeaf { version: 0xC0, script_bytes: vec![0x51] }),
     };
 
-    let tx = build_disprove_tx(&params);
+    let tx = build_disprove_tx(&params).expect("build_disprove_tx should succeed");
 
     assert_eq!(tx.version, 2);
     assert_eq!(tx.inputs.len(), 1);
@@ -178,7 +178,7 @@ fn test_timeout_tx_csv_locktime() {
         timeout_blocks: 144,
     };
 
-    let tx = build_timeout_tx(&params);
+    let tx = build_timeout_tx(&params).expect("build_timeout_tx should succeed");
 
     assert_eq!(tx.version, 2);
     assert_eq!(tx.inputs.len(), 1);
@@ -285,7 +285,7 @@ fn test_full_transaction_graph() {
         funding_value: 11_000_000,
         fee_sats: 1_000,
         timeout_blocks: 144,
-    });
+    }).expect("build_assert_tx should succeed");
 
     // 2. Simulate a dispute on step 5 (MsmRound)
     let disputed_step = &trace.steps[5];
@@ -307,7 +307,7 @@ fn test_full_transaction_graph() {
         fee_sats: 1_500,
         operator_pubkey: operator_key(),
         taproot_tree: TaprootTree::Leaf(TaprootLeaf { version: 0xC0, script_bytes: vec![0x51] }),
-    });
+    }).expect("build_disprove_tx should succeed");
 
     // 3. Also build the timeout path (for the honest case)
     let timeout_tx = build_timeout_tx(&TimeoutTxParams {
@@ -323,7 +323,7 @@ fn test_full_transaction_graph() {
         },
         fee_sats: 1_000,
         timeout_blocks: 144,
-    });
+    }).expect("build_timeout_tx should succeed");
 
     // Verify all TXs are structurally valid
     assert_eq!(assert_tx.tx.version, 2);

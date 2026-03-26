@@ -122,13 +122,15 @@ pub trait StateSync {
 /// re-verification — this is safe only for trusted leader sync.
 ///
 /// Returns the number of events applied.
-pub fn apply_delta(node: &mut super::LumoraNode, delta: &StateDelta) -> usize {
+pub fn apply_delta(node: &mut super::LumoraNode, delta: &StateDelta) -> Result<usize, &'static str> {
     let mut applied = 0;
     for event in &delta.events {
         match event {
             PoolEvent::Deposit { commitment, amount, .. } => {
                 if node.deposit(*commitment, *amount).is_ok() {
                     applied += 1;
+                } else {
+                    return Err("deposit replay failed during delta application");
                 }
             }
             PoolEvent::Transfer { nullifiers, output_commitments, .. } => {
@@ -144,7 +146,8 @@ pub fn apply_delta(node: &mut super::LumoraNode, delta: &StateDelta) -> usize {
             PoolEvent::Withdraw { nullifiers, change_commitments, amount, .. } => {
                 // Replay state changes: spend nullifiers, insert commitments,
                 // decrease pool balance.
-                node.pool.state.replay_withdraw_event(nullifiers, change_commitments, *amount);
+                node.pool.state.replay_withdraw_event(nullifiers, change_commitments, *amount)
+                    .map_err(|_| "withdraw replay failed: pool balance underflow in delta")?;
                 for cm in change_commitments {
                     node.tree.insert(*cm);
                 }
@@ -153,7 +156,7 @@ pub fn apply_delta(node: &mut super::LumoraNode, delta: &StateDelta) -> usize {
             }
         }
     }
-    applied
+    Ok(applied)
 }
 
 // ---------------------------------------------------------------------------
@@ -334,7 +337,7 @@ pub fn handle_broadcast(
         from_height: local_height,
         events: vec![msg.event.clone()],
     };
-    apply_delta(node, &delta);
+    apply_delta(node, &delta).ok();
 
     BroadcastResult::Applied
 }

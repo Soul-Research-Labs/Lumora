@@ -177,23 +177,39 @@ fn router_with_state(state: AppState) -> Router {
                     // must be a valid IP), then ConnectInfo socket addr, then
                     // a non-routable sentinel so that unauthenticated traffic
                     // still gets rate-limited rather than skipped.
-                    let forwarded_ip: Option<IpAddr> = {
-                        let trust_proxy = std::env::var("LUMORA_TRUST_PROXY").ok()
-                            .map_or(false, |v| v == "true" || v == "1");
-                        if trust_proxy {
-                            req.headers()
-                                .get("x-forwarded-for")
-                                .and_then(|v| v.to_str().ok())
-                                .and_then(|s| s.split(',').next())
-                                .and_then(|s| s.trim().parse().ok())
-                        } else {
-                            None
-                        }
-                    };
                     let socket_ip: Option<IpAddr> = req
                         .extensions()
                         .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
                         .map(|ci| ci.0.ip());
+                    // Only honour X-Forwarded-For when the request arrives from
+                    // a trusted proxy IP listed in LUMORA_PROXY_IPS (CSV).
+                    // Without this allowlist, any client can forge the header
+                    // and bypass per-IP rate limiting.
+                    let forwarded_ip: Option<IpAddr> = {
+                        let trust_proxy = std::env::var("LUMORA_TRUST_PROXY").ok()
+                            .map_or(false, |v| v == "true" || v == "1");
+                        if trust_proxy {
+                            let trusted_proxies: Vec<IpAddr> = std::env::var("LUMORA_PROXY_IPS")
+                                .unwrap_or_default()
+                                .split(',')
+                                .filter_map(|s| s.trim().parse().ok())
+                                .collect();
+                            let from_trusted_proxy = socket_ip
+                                .map(|ip| trusted_proxies.contains(&ip))
+                                .unwrap_or(false);
+                            if from_trusted_proxy {
+                                req.headers()
+                                    .get("x-forwarded-for")
+                                    .and_then(|v| v.to_str().ok())
+                                    .and_then(|s| s.split(',').next())
+                                    .and_then(|s| s.trim().parse().ok())
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    };
                     let ip = forwarded_ip
                         .or(socket_ip)
                         .unwrap_or(IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0)));

@@ -23,6 +23,10 @@ const EPOCH_CHECK_INTERVAL: Duration = Duration::from_secs(60);
 /// Interval between bridge deposit polling.
 const BRIDGE_POLL_INTERVAL: Duration = Duration::from_secs(30);
 
+/// Maximum time allowed for a single bridge poll operation before it is
+/// considered stuck. Prevents a hung RPC call from blocking the loop.
+const BRIDGE_POLL_TIMEOUT: Duration = Duration::from_secs(25);
+
 /// Maximum time to wait for background tasks to finish during shutdown.
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -182,12 +186,19 @@ async fn bridge_poll_loop(
         if !node.has_bridge() {
             continue;
         }
-        match node.poll_bridge_deposits() {
-            Ok(0) => {}
-            Ok(n) => {
+        let result = tokio::time::timeout(
+            BRIDGE_POLL_TIMEOUT,
+            std::future::ready(node.poll_bridge_deposits()),
+        ).await;
+        match result {
+            Err(_) => {
+                tracing::warn!("bridge poll timed out after {}s", BRIDGE_POLL_TIMEOUT.as_secs());
+            }
+            Ok(Ok(0)) => {}
+            Ok(Ok(n)) => {
                 tracing::info!(new_deposits = n, "bridge poll: processed L1 deposits");
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 tracing::warn!(error = %e, "bridge poll failed");
             }
         }

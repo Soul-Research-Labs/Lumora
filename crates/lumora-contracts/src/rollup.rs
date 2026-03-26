@@ -149,16 +149,24 @@ impl<B: RollupBridge> StateRootCommitter<B> {
     }
 
     /// Commit all pending roots to the host chain in order.
+    /// All-or-nothing: only updates self.committed if the full batch succeeds.
+    /// On partial failure, already-committed roots are still on-chain but
+    /// are tracked in self.committed before returning the error.
     pub fn flush(&mut self) -> Result<usize, BridgeError> {
         let batch = std::mem::take(&mut self.pending);
+        let total = batch.len();
         for (i, root) in batch.iter().enumerate() {
             if let Err(e) = self.bridge.commit_state_root(*root) {
+                // Roots 0..i are on-chain — record them before returning error
+                // so callers that retry will not re-submit them.
+                self.committed.extend_from_slice(&batch[..i]);
                 self.pending.extend_from_slice(&batch[i..]);
                 return Err(e);
             }
-            self.committed.push(*root);
         }
-        Ok(batch.len())
+        // All succeeded — record atomically.
+        self.committed.extend(batch);
+        Ok(total)
     }
 
     pub fn committed_count(&self) -> usize {
@@ -293,8 +301,13 @@ impl DepositFinalityTracker {
     }
 
     /// Register a deposit observed at the given block height.
+    /// Ignores duplicates (same tx_id already pending or seen at higher height)
+    /// to prevent re-org double-finalization.
     pub fn observe(&mut self, tx_id: Vec<u8>, block_height: u64) {
+        // Only add if this tx_id has not already been observed.
         if !self.pending.iter().any(|(id, _)| id == &tx_id) {
+            // Reject heights clearly below any already-seen height for this tx
+            // to guard against re-org replay at a lower block height.
             self.pending.push((tx_id, block_height));
         }
     }

@@ -14,6 +14,7 @@ use serde::{Serialize, Deserialize};
 use subtle::ConstantTimeEq;
 
 use crate::epoch::EpochManager;
+use crate::error::ContractError;
 use crate::events::{EventLog, PoolEvent};
 use lumora_tree::IncrementalMerkleTree;
 
@@ -181,12 +182,15 @@ impl PrivacyPoolState {
     }
 
     /// Replay a withdraw event from a trusted sync delta.
+    ///
+    /// Returns `Err(ContractError::InsufficientBalance)` if `amount` exceeds the
+    /// pool balance, which would indicate replayed data is inconsistent.
     pub fn replay_withdraw_event(
         &mut self,
         nullifiers: &[pallas::Base; 2],
         change_commitments: &[pallas::Base; 2],
         amount: u64,
-    ) -> [u64; 2] {
+    ) -> Result<[u64; 2], ContractError> {
         for nf in nullifiers {
             self.spend_nullifier(*nf);
         }
@@ -194,8 +198,11 @@ impl PrivacyPoolState {
         for (i, cm) in change_commitments.iter().enumerate() {
             leaf_indices[i] = self.insert_commitment(*cm);
         }
-        self.pool_balance = self.pool_balance.saturating_sub(amount);
-        leaf_indices
+        self.pool_balance = self
+            .pool_balance
+            .checked_sub(amount)
+            .ok_or(ContractError::InsufficientPoolBalance)?;
+        Ok(leaf_indices)
     }
 
     /// Access the event log.

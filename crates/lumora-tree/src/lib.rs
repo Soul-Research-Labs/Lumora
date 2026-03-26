@@ -18,6 +18,13 @@ use serde::{Serialize, Deserialize};
 
 use lumora_primitives::poseidon;
 
+/// Error type returned by fallible tree operations.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TreeError {
+    /// The tree has reached its maximum capacity (2^DEPTH leaves).
+    TreeFull,
+}
+
 /// Tree depth. 2^32 ≈ 4 billion leaf capacity.
 pub const DEPTH: usize = 32;
 
@@ -119,12 +126,11 @@ impl IncrementalMerkleTree {
         self.next_index == 0
     }
 
-    /// Insert a leaf, returns the leaf's index.
-    pub fn insert(&mut self, leaf: pallas::Base) -> u64 {
-        assert!(
-            self.next_index < (1u64 << DEPTH),
-            "Merkle tree is full"
-        );
+    /// Insert a leaf, returning `Ok(index)` or `Err(TreeError::TreeFull)` if the tree is full.
+    pub fn try_insert(&mut self, leaf: pallas::Base) -> Result<u64, TreeError> {
+        if self.next_index >= (1u64 << DEPTH) {
+            return Err(TreeError::TreeFull);
+        }
 
         let index = self.next_index;
         self.leaves.push(leaf);
@@ -146,19 +152,24 @@ impl IncrementalMerkleTree {
         let mut idx = index;
         for i in 0..DEPTH {
             if idx & 1 == 0 {
-                // We're the left child — record this as the filled subtree at level i.
                 self.filled[i] = current;
-                // The right sibling is the zero subtree at this level.
                 current = poseidon::hash_two(current, self.zeros[i]);
             } else {
-                // We're the right child — left sibling is the previously filled subtree.
                 current = poseidon::hash_two(self.filled[i], current);
             }
             idx >>= 1;
         }
 
         self.next_index += 1;
-        index
+        Ok(index)
+    }
+
+    /// Insert a leaf, returns the leaf's index.
+    ///
+    /// # Panics
+    /// Panics if the tree is full (2^DEPTH leaves have been inserted).
+    pub fn insert(&mut self, leaf: pallas::Base) -> u64 {
+        self.try_insert(leaf).expect("Merkle tree is full")
     }
 
     /// Compute the current root.

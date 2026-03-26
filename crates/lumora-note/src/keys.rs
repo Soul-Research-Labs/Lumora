@@ -12,6 +12,7 @@ use pasta_curves::arithmetic::CurveAffine;
 use pasta_curves::pallas;
 use rand_core::RngCore;
 use serde;
+use zeroize::Zeroizing;
 
 /// A secret key that authorizes spending a note.
 #[derive(Clone)]
@@ -41,13 +42,15 @@ impl serde::Serialize for SpendingKey {
 
 impl<'de> serde::Deserialize<'de> for SpendingKey {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let bytes: Vec<u8> = serde::Deserialize::deserialize(deserializer)?;
+        let bytes: Zeroizing<Vec<u8>> = Zeroizing::new(
+            serde::Deserialize::deserialize(deserializer)?
+        );
         if bytes.len() != 32 {
             return Err(serde::de::Error::custom("spending key must be 32 bytes"));
         }
-        let mut arr = [0u8; 32];
+        let mut arr = Zeroizing::new([0u8; 32]);
         arr.copy_from_slice(&bytes);
-        let scalar: Option<pallas::Scalar> = pallas::Scalar::from_repr(arr).into();
+        let scalar: Option<pallas::Scalar> = pallas::Scalar::from_repr(*arr).into();
         match scalar {
             Some(s) => Ok(Self(s)),
             None => Err(serde::de::Error::custom("invalid scalar")),
@@ -134,9 +137,9 @@ impl SpendingKey {
     /// the mnemonic words securely — they are the only way to recover the key.
     #[cfg(feature = "mnemonic")]
     pub fn generate_mnemonic(mut rng: impl RngCore) -> (String, Self) {
-        let mut entropy = [0u8; 32]; // 256-bit entropy → 24-word mnemonic
-        rng.fill_bytes(&mut entropy);
-        let mnemonic = bip39::Mnemonic::from_entropy_in(bip39::Language::English, &entropy)
+        let mut entropy = Zeroizing::new([0u8; 32]); // 256-bit entropy → 24-word mnemonic
+        rng.fill_bytes(entropy.as_mut());
+        let mnemonic = bip39::Mnemonic::from_entropy_in(bip39::Language::English, entropy.as_ref())
             .expect("32 bytes is valid entropy");
         let phrase = mnemonic.to_string();
         let key = Self::from_mnemonic(&phrase);
@@ -152,34 +155,34 @@ impl SpendingKey {
     pub fn from_mnemonic(phrase: &str) -> Self {
         let mnemonic = bip39::Mnemonic::parse_in_normalized(bip39::Language::English, phrase)
             .expect("valid mnemonic");
-        let seed = mnemonic.to_seed("");
-        let mut bytes = [0u8; 32];
+        let seed = Zeroizing::new(mnemonic.to_seed(""));
+        let mut bytes = Zeroizing::new([0u8; 32]);
         bytes.copy_from_slice(&seed[..32]);
         // Interpret as a scalar — from_repr may fail if >= field modulus,
         // so fall back to wide reduction (from_u512 is not available, so we
         // hash via Poseidon to get a valid field element deterministically).
-        let scalar: Option<pallas::Scalar> = pallas::Scalar::from_repr(bytes).into();
+        let scalar: Option<pallas::Scalar> = pallas::Scalar::from_repr(*bytes).into();
         match scalar {
             Some(s) => Self(s),
             None => {
                 // Bytes >= field modulus: use the second 32 bytes of the
                 // 64-byte BIP-39 seed as a domain separator and hash both
                 // halves through Poseidon for a deterministic, uniform scalar.
-                let mut domain_bytes = [0u8; 32];
+                let mut domain_bytes = Zeroizing::new([0u8; 32]);
                 domain_bytes.copy_from_slice(&seed[32..64]);
                 // At least one of the two halves will be a valid base field
                 // element (the field modulus is ~2^254, so random 32-byte
                 // values have >93% chance of being valid).
-                let a = pallas::Base::from_repr(bytes)
+                let a = pallas::Base::from_repr(*bytes)
                     .unwrap_or_else(|| {
-                        let mut b = bytes;
+                        let mut b = *bytes;
                         b[31] &= 0x3F; // force valid for base field
                         pallas::Base::from_repr(b)
                             .expect("cleared top bits guarantees valid base field element")
                     });
-                let b = pallas::Base::from_repr(domain_bytes)
+                let b = pallas::Base::from_repr(*domain_bytes)
                     .unwrap_or_else(|| {
-                        let mut d = domain_bytes;
+                        let mut d = *domain_bytes;
                         d[31] &= 0x3F;
                         pallas::Base::from_repr(d)
                             .expect("cleared top bits guarantees valid base field element")

@@ -106,11 +106,12 @@ impl EpochManager {
         self.finalized_order.push(epoch_id);
 
         // Prune old epochs beyond the history limit.
+        // Remove from the ordered Vec first, then from the HashMap, so that a
+        // hypothetical interrupt between the two steps leaves finalized_order
+        // as the authoritative list (the HashMap entry is unreachable anyway).
         while self.finalized_order.len() > MAX_EPOCH_HISTORY {
-            if let Some(old_id) = self.finalized_order.first().copied() {
-                self.finalized_roots.remove(&old_id);
-                self.finalized_order.remove(0);
-            }
+            let old_id = self.finalized_order.remove(0);
+            self.finalized_roots.remove(&old_id);
         }
 
         // Reset current epoch.
@@ -126,15 +127,34 @@ impl EpochManager {
     /// Uses `SystemTime` for wall-clock alignment. If the system clock
     /// jumps backward (NTP adjustment), we clamp to the current epoch to
     /// guarantee monotonic epoch progression — epochs never go backward.
+    ///
+    /// If multiple epoch boundaries have passed (e.g., node was offline),
+    /// each skipped epoch is recorded with an empty/zero root so that sync
+    /// peers can distinguish "no activity" epochs from missing data.
     fn maybe_advance_epoch(&mut self) {
         let now = current_unix_secs();
         let expected_epoch = now / self.epoch_duration_secs;
         // Only advance forward — never regress if wall clock jumps back.
         if expected_epoch > self.current_epoch {
-            // Finalize the current epoch (if non-empty) and advance.
-            self.finalize_current_epoch();
-            self.current_epoch = expected_epoch;
-            self.epoch_start_time = expected_epoch * self.epoch_duration_secs;
+            // Finalize the current epoch (even if empty, to avoid gaps).
+            // For any fully-skipped intermediate epochs, insert a zero root.
+            let old_epoch = self.current_epoch;
+            let _ = self.finalize_current_epoch(); // finalizes old_epoch if non-empty
+            // After finalize_current_epoch, self.current_epoch == old_epoch + 1.
+            // For each remaining skipped epoch, record a zero root.
+            while self.current_epoch < expected_epoch {
+                let skip_id = self.current_epoch;
+                self.finalized_roots.insert(skip_id, pallas::Base::zero());
+                self.finalized_order.push(skip_id);
+                // Prune if over limit.
+                while self.finalized_order.len() > MAX_EPOCH_HISTORY {
+                    let old_id = self.finalized_order.remove(0);
+                    self.finalized_roots.remove(&old_id);
+                }
+                self.current_epoch += 1;
+                self.epoch_start_time += self.epoch_duration_secs;
+            }
+            // current_epoch is now expected_epoch.
         }
     }
 

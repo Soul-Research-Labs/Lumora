@@ -170,6 +170,13 @@ fn point_to_bytes(point: &pallas::Point) -> [u8; 32] {
 ///
 /// Solves $y^2 = x^3 + 5$ on Pallas and picks the y matching the stored parity.
 fn bytes_to_point(bytes: &[u8; 32]) -> Option<pallas::Point> {
+    // The identity point is serialized as all-zero bytes by point_to_bytes.
+    // Deserializing it would yield (0, sqrt(5)) — a completely different point.
+    // Reject this encoding to prevent identity substitution attacks.
+    if bytes == &[0u8; 32] {
+        return None;
+    }
+
     // Extract y-parity from the top bit of byte 31.
     let y_parity = (bytes[31] >> 7) & 1;
     let mut x_bytes = *bytes;

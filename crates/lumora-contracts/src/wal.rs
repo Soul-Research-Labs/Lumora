@@ -33,8 +33,11 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
+use ff::PrimeField;
+use pasta_curves::pallas;
 use serde::{Deserialize, Serialize};
 
+use crate::error::ContractError;
 use crate::events::PoolEvent;
 use crate::state::PrivacyPoolState;
 
@@ -83,6 +86,11 @@ pub struct WalEntry {
     pub seq: u64,
     /// The pool event to replay.
     pub event: PoolEvent,
+    /// Merkle root of the commitment tree *after* this event was applied.
+    /// Present when written by `append_with_root`; validated during recovery.
+    /// Field is optional for backward compatibility with older WAL files.
+    #[serde(default)]
+    pub merkle_root: Option<[u8; 32]>,
 }
 
 /// Write-ahead log handle.
@@ -135,9 +143,23 @@ impl WriteAheadLog {
 
     /// Append an event to the WAL. Flushes + fsyncs to guarantee durability.
     pub fn append(&mut self, event: &PoolEvent) -> io::Result<()> {
+        self.append_impl(event, None)
+    }
+
+    /// Append an event together with the Merkle root *after* applying the event.
+    ///
+    /// During recovery the stored root is compared to the replayed root; a
+    /// mismatch is returned as an `InvalidData` error so the operator can
+    /// take corrective action before the node accepts further transactions.
+    pub fn append_with_root(&mut self, event: &PoolEvent, root: pallas::Base) -> io::Result<()> {
+        self.append_impl(event, Some(root.to_repr()))
+    }
+
+    fn append_impl(&mut self, event: &PoolEvent, merkle_root: Option<[u8; 32]>) -> io::Result<()> {
         let entry = WalEntry {
             seq: self.next_seq,
             event: event.clone(),
+            merkle_root,
         };
 
         let json = serde_json::to_vec(&entry)
@@ -201,7 +223,25 @@ impl WriteAheadLog {
 
         let replayed = entries.len() as u64;
         for entry in &entries {
-            replay_event(&mut state, &entry.event);
+            replay_event(&mut state, &entry.event)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("WAL replay error at seq {}: {e}", entry.seq)))?;
+            // If the entry records the expected post-event root, verify it.
+            if let Some(root_bytes) = entry.merkle_root {
+                let expected: Option<pallas::Base> = pallas::Base::from_repr(root_bytes).into();
+                if let Some(expected_root) = expected {
+                    let actual_root = state.current_root();
+                    if actual_root != expected_root {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            format!(
+                                "WAL replay seq {}: Merkle root mismatch \
+                                 (expected {:?}, got {:?})",
+                                entry.seq, expected_root, actual_root
+                            ),
+                        ));
+                    }
+                }
+            }
         }
 
         // After recovery, reset the WAL.
@@ -242,7 +282,24 @@ impl WriteAheadLog {
 
         let replayed = entries.len() as u64;
         for entry in &entries {
-            replay_event(&mut state, &entry.event);
+            replay_event(&mut state, &entry.event)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("WAL replay (onto) error at seq {}: {e}", entry.seq)))?;
+            if let Some(root_bytes) = entry.merkle_root {
+                let expected: Option<pallas::Base> = pallas::Base::from_repr(root_bytes).into();
+                if let Some(expected_root) = expected {
+                    let actual_root = state.current_root();
+                    if actual_root != expected_root {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            format!(
+                                "WAL replay (onto) seq {}: Merkle root mismatch \
+                                 (expected {:?}, got {:?})",
+                                entry.seq, expected_root, actual_root
+                            ),
+                        ));
+                    }
+                }
+            }
         }
 
         self.next_seq = 0;
@@ -297,13 +354,19 @@ fn read_wal_entries(path: &Path) -> io::Result<Vec<WalEntry>> {
 
 /// Replay a single event onto state, mirroring the same state transitions
 /// that the original execution performed.
-pub fn replay_event(state: &mut PrivacyPoolState, event: &PoolEvent) {
+///
+/// Returns `Err(ContractError::PoolBalanceOverflow)` if a deposit would
+/// overflow the pool balance counter during replay (indicates data corruption).
+pub fn replay_event(state: &mut PrivacyPoolState, event: &PoolEvent) -> Result<(), ContractError> {
     match event {
         PoolEvent::Deposit {
             commitment, amount, ..
         } => {
             state.insert_commitment(*commitment);
-            state.pool_balance = state.pool_balance.saturating_add(*amount);
+            state.pool_balance = state
+                .pool_balance
+                .checked_add(*amount)
+                .ok_or(ContractError::PoolBalanceOverflow)?;
             state.emit_event(event.clone());
         }
         PoolEvent::Transfer {
@@ -320,10 +383,11 @@ pub fn replay_event(state: &mut PrivacyPoolState, event: &PoolEvent) {
             amount,
             ..
         } => {
-            state.replay_withdraw_event(nullifiers, change_commitments, *amount);
+            state.replay_withdraw_event(nullifiers, change_commitments, *amount)?;
             state.emit_event(event.clone());
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -388,9 +452,7 @@ mod tests {
             leaf_index: 0,
         };
         wal.append(&event).unwrap();
-        replay_event(&mut state, &event);
-
-        // Checkpoint.
+        replay_event(&mut state, &event).unwrap();
         wal.checkpoint(&mut state).unwrap();
         assert_eq!(wal.entries_since_checkpoint(), 0);
 
@@ -423,7 +485,7 @@ mod tests {
             leaf_index: 0,
         };
         wal.append(&e1).unwrap();
-        replay_event(&mut state, &e1);
+        replay_event(&mut state, &e1).unwrap();
         wal.checkpoint(&mut state).unwrap();
 
         // Second deposit (not checkpointed — simulates crash).
@@ -583,7 +645,7 @@ mod tests {
                 leaf_index: i,
             };
             wal.append(&event).unwrap();
-            replay_event(&mut state, &event);
+            replay_event(&mut state, &event).unwrap();
             wal.checkpoint(&mut state).unwrap();
         }
 

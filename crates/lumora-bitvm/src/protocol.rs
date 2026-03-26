@@ -150,6 +150,9 @@ pub enum AssertionState {
     Challenged {
         /// The disputed step index.
         disputed_step: u32,
+        /// Block height by which the operator must respond.
+        /// If not responded by this height, the assertion can be finalized as fraudulent.
+        response_deadline: u64,
     },
     /// The operator has responded to the challenge.
     Responded {
@@ -202,7 +205,8 @@ impl ProtocolManager {
 
         match state {
             AssertionState::Pending { timeout_height } => {
-                if challenge.challenge_height >= *timeout_height {
+                // Bug #19: use `>` so the last allowed block (timeout_height - 1) can still challenge.
+                if challenge.challenge_height > *timeout_height {
                     return Err(ProtocolError::ChallengeAfterTimeout);
                 }
                 if challenge.disputed_step >= assertion.num_steps {
@@ -213,6 +217,8 @@ impl ProtocolManager {
                 }
                 *state = AssertionState::Challenged {
                     disputed_step: challenge.disputed_step,
+                    // Bug #20: operator must respond within the same timeout window.
+                    response_deadline: *timeout_height,
                 };
                 Ok(())
             }
@@ -237,7 +243,7 @@ impl ProtocolManager {
             .ok_or(ProtocolError::AssertionNotFound(response.assertion_id))?;
 
         match state {
-            AssertionState::Challenged { disputed_step } => {
+            AssertionState::Challenged { disputed_step, .. } => {
                 if response.disputed_step != *disputed_step {
                     return Err(ProtocolError::StepMismatch(
                         response.disputed_step,
@@ -277,15 +283,26 @@ impl ProtocolManager {
     }
 
     /// Finalize assertions whose timeout has elapsed without challenge.
+    /// Also forfeits challenged assertions where the operator failed to respond in time.
     pub fn finalize_expired(&mut self, current_height: u64) -> Vec<AssertionId> {
         let mut finalized = Vec::new();
 
         for (id, (_, state)) in self.assertions.iter_mut() {
-            if let AssertionState::Pending { timeout_height } = state {
-                if current_height >= *timeout_height {
-                    *state = AssertionState::Finalized;
-                    finalized.push(*id);
+            match state {
+                AssertionState::Pending { timeout_height } => {
+                    if current_height >= *timeout_height {
+                        *state = AssertionState::Finalized;
+                        finalized.push(*id);
+                    }
                 }
+                // Bug #20: Challenged state with expired response deadline → forfeit operator bond.
+                AssertionState::Challenged { response_deadline, .. } => {
+                    if current_height >= *response_deadline {
+                        *state = AssertionState::Slashed;
+                        finalized.push(*id);
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -466,10 +483,10 @@ mod tests {
         };
         pm.process_challenge(&challenge).unwrap();
 
-        assert_eq!(
+        assert!(matches!(
             pm.get_state(&assertion_id),
-            Some(&AssertionState::Challenged { disputed_step: 0 })
-        );
+            Some(&AssertionState::Challenged { disputed_step: 0, .. })
+        ));
 
         // Operator responds
         let response = ChallengeResponse {
