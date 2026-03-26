@@ -24,6 +24,7 @@ import json
 import random
 import time
 from typing import Any, Optional
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
@@ -63,6 +64,11 @@ class LumoraClient:
         max_retries: int = 0,
         retry_base: float = 0.5,
     ) -> None:
+        parsed = urlparse(base_url)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError(
+                f"Invalid URL scheme '{parsed.scheme}'. Only 'http' and 'https' are allowed."
+            )
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.timeout = timeout
