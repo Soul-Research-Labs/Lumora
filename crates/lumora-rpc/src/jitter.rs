@@ -31,8 +31,19 @@ impl Default for JitterConfig {
 
 impl JitterConfig {
     /// Create a jitter config with the given range in milliseconds.
+    ///
+    /// If `min_ms > max_ms`, the values are swapped and a warning is logged.
     pub fn from_millis(min_ms: u64, max_ms: u64) -> Self {
-        let (min_ms, max_ms) = if min_ms > max_ms { (max_ms, min_ms) } else { (min_ms, max_ms) };
+        let (min_ms, max_ms) = if min_ms > max_ms {
+            tracing::warn!(
+                min_ms,
+                max_ms,
+                "jitter min_ms > max_ms, swapping to (min={max_ms}, max={min_ms})"
+            );
+            (max_ms, min_ms)
+        } else {
+            (min_ms, max_ms)
+        };
         Self {
             min: Duration::from_millis(min_ms),
             max: Duration::from_millis(max_ms),
