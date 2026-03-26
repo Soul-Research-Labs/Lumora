@@ -91,8 +91,13 @@ impl LumoraNode {
         commitment: pallas::Base,
         amount: u64,
     ) -> Result<DepositReceipt, ContractError> {
+        // Insert into the Merkle tree first — try_insert returns an error if
+        // the tree is full, so we never credit the pool balance for a
+        // commitment that has no Merkle path (which would be unspendable).
+        self.tree
+            .try_insert(commitment)
+            .map_err(|_| ContractError::TreeFull)?;
         let receipt = self.pool.deposit(&DepositRequest { commitment, amount })?;
-        self.tree.insert(commitment);
         Ok(receipt)
     }
 
@@ -285,11 +290,19 @@ impl LumoraNode {
         let deposits = bridge.poll_deposits()?;
         let count = deposits.len();
         for dep in &deposits {
+            // Insert into the tree first — if the tree is full, we must not
+            // credit the pool for a commitment that has no Merkle path.
+            self.tree.try_insert(dep.commitment).map_err(|_| {
+                BridgeError::DepositRejected(format!(
+                    "tree full when inserting commitment {}",
+                    hex::encode(dep.commitment.to_repr())
+                ))
+            })?;
             match self.pool.deposit(&DepositRequest {
                 commitment: dep.commitment,
                 amount: dep.amount,
             }) {
-                Ok(_) => { self.tree.insert(dep.commitment); }
+                Ok(_) => {}
                 Err(e) => {
                     // A deposit error means the pool and tree have diverged;
                     // propagate as a bridge error so the caller can stop and
