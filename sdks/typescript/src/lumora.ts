@@ -79,8 +79,11 @@ export interface NullifierResult {
 }
 
 export interface RelayNoteRequest {
-  tag: string;
+  recipient_tag: string;
+  leaf_index: number;
+  commitment: string;
   ciphertext: string;
+  ephemeral_pubkey: string;
 }
 
 export interface NotesRequest {
@@ -221,7 +224,7 @@ export class LumoraClient {
     if (apiKey && parsed.protocol === "http:") {
       console.warn(
         "[LumoraClient] WARNING: API key is being sent over plain HTTP. " +
-        "Use HTTPS in production to protect credentials in transit.",
+          "Use HTTPS in production to protect credentials in transit.",
       );
     }
     // Remove trailing slash
@@ -287,6 +290,10 @@ export class LumoraClient {
             continue;
           }
           throw new LumoraError(res.status, text);
+        }
+        // Some endpoints (e.g. relay-note) return 201 with no body.
+        if (!text) {
+          return undefined as T;
         }
         return JSON.parse(text) as T;
       } catch (err) {
@@ -360,8 +367,10 @@ export class LumoraClient {
   }
 
   /** Fetch encrypted notes by recipient tag. */
-  async getNotes(tag: string): Promise<string[]> {
-    return this.request<string[]>("POST", "/notes", { tag });
+  async getNotes(tag: string): Promise<EncryptedNoteResponse[]> {
+    return this.request<EncryptedNoteResponse[]>("POST", "/notes", {
+      recipient_tag: tag,
+    });
   }
 
   /** Query paginated event history. */
