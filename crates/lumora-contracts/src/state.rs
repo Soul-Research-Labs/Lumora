@@ -327,30 +327,49 @@ impl PrivacyPoolState {
 }
 
 /// Default key used for state file integrity checks when `LUMORA_HMAC_KEY`
-/// is not set.  In production, set `LUMORA_HMAC_KEY` to a high-entropy
-/// secret so that the HMAC actually authenticates state files.
+/// is not set.  Only used as a fallback in development/testing — production
+/// deployments MUST set `LUMORA_HMAC_KEY` to a high-entropy secret.
 const DEFAULT_INTEGRITY_KEY: &[u8] = b"lumora-state-integrity-v1";
 
 /// Environment variable for the HMAC secret used to sign/verify state files.
 const HMAC_KEY_ENV: &str = "LUMORA_HMAC_KEY";
 
+/// When set to "true" or "1", the node will refuse to start without
+/// an explicit HMAC key rather than falling back to the compiled-in default.
+const REQUIRE_HMAC_KEY_ENV: &str = "LUMORA_REQUIRE_HMAC_KEY";
+
 /// Return the HMAC key to use for state file integrity.
 ///
-/// Reads `LUMORA_HMAC_KEY` from the environment at each call.  Falls back to
-/// the compiled-in default so that existing deployments remain readable.
+/// Reads `LUMORA_HMAC_KEY` from the environment at each call.
+/// If `LUMORA_REQUIRE_HMAC_KEY` is set, panics when the key is missing
+/// (fail-closed for production). Otherwise falls back with a warning.
 fn integrity_key() -> Vec<u8> {
-    std::env::var(HMAC_KEY_ENV)
+    if let Some(key) = std::env::var(HMAC_KEY_ENV)
         .ok()
         .filter(|k| !k.is_empty())
-        .map(|k| k.into_bytes())
-        .unwrap_or_else(|| {
-            eprintln!(
-                "WARNING: {} is not set; using weak default HMAC key. \
-                 Set this variable to a high-entropy secret in production.",
-                HMAC_KEY_ENV,
-            );
-            DEFAULT_INTEGRITY_KEY.to_vec()
-        })
+    {
+        return key.into_bytes();
+    }
+
+    let require = std::env::var(REQUIRE_HMAC_KEY_ENV)
+        .ok()
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false);
+
+    if require {
+        panic!(
+            "{HMAC_KEY_ENV} is not set and {REQUIRE_HMAC_KEY_ENV}=true — \
+             refusing to use weak default key. Set {HMAC_KEY_ENV} to a \
+             high-entropy secret."
+        );
+    }
+
+    eprintln!(
+        "WARNING: {HMAC_KEY_ENV} is not set; using weak default HMAC key. \
+         Set this variable to a high-entropy secret in production. \
+         Set {REQUIRE_HMAC_KEY_ENV}=true to enforce this requirement.",
+    );
+    DEFAULT_INTEGRITY_KEY.to_vec()
 }
 
 /// Current state file format version.
