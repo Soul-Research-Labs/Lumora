@@ -12,6 +12,7 @@
 
 use ff::PrimeField;
 use pasta_curves::pallas;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::bridge::{BridgeError, InboundDeposit, OutboundWithdrawal, RollupBridge};
 
@@ -141,11 +142,12 @@ impl<B: RollupBridge> StateRootCommitter<B> {
     }
 
     /// Queue a root for the next batch commit.
-    pub fn queue(&mut self, root: pallas::Base) {
+    pub fn queue(&mut self, root: pallas::Base) -> Result<(), BridgeError> {
         self.pending.push(root);
         if self.pending.len() >= self.batch_capacity {
-            let _ = self.flush();
+            self.flush()?;
         }
+        Ok(())
     }
 
     /// Commit all pending roots to the host chain in order.
@@ -420,7 +422,7 @@ where
         }
 
         // 4. Commit state root
-        self.committer.queue(current_root);
+        self.committer.queue(current_root)?;
         let flushed = self.committer.flush()?;
         result.roots_committed = flushed;
 
@@ -518,7 +520,7 @@ impl RpcTransport for OfflineTransport {
 pub struct StrataBridge<T: RpcTransport = OfflineTransport> {
     config: StrataConfig,
     transport: T,
-    next_id: std::cell::Cell<u64>,
+    next_id: AtomicU64,
 }
 
 impl StrataBridge<OfflineTransport> {
@@ -527,7 +529,7 @@ impl StrataBridge<OfflineTransport> {
         Self {
             config,
             transport: OfflineTransport,
-            next_id: std::cell::Cell::new(1),
+            next_id: AtomicU64::new(1),
         }
     }
 }
@@ -538,7 +540,7 @@ impl<T: RpcTransport> StrataBridge<T> {
         Self {
             config,
             transport,
-            next_id: std::cell::Cell::new(1),
+            next_id: AtomicU64::new(1),
         }
     }
 
@@ -552,8 +554,7 @@ impl<T: RpcTransport> StrataBridge<T> {
         method: &str,
         params: serde_json::Value,
     ) -> Result<serde_json::Value, BridgeError> {
-        let id = self.next_id.get();
-        self.next_id.set(id.wrapping_add(1));
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
 
         let req = JsonRpcRequest {
             jsonrpc: "2.0",
@@ -587,20 +588,27 @@ impl<T: RpcTransport> RollupBridge for StrataBridge<T> {
         deposits
             .into_iter()
             .map(|d| {
-                let amount = d["amount"].as_u64().unwrap_or(0);
-                let tx_id_hex = d["tx_id"].as_str().unwrap_or("");
-                let commitment_hex = d["commitment"].as_str().unwrap_or("");
+                let amount = d["amount"].as_u64().ok_or_else(|| {
+                    BridgeError::ConnectionError("deposit missing amount".into())
+                })?;
+                let tx_id_hex = d["tx_id"].as_str().ok_or_else(|| {
+                    BridgeError::ConnectionError("deposit missing tx_id".into())
+                })?;
+                let commitment_hex = d["commitment"].as_str().ok_or_else(|| {
+                    BridgeError::ConnectionError("deposit missing commitment".into())
+                })?;
 
                 let tx_id = hex::decode(tx_id_hex)
-                    .unwrap_or_default();
+                    .map_err(|e| BridgeError::ConnectionError(format!("invalid tx_id hex: {e}")))?;
 
                 // Parse commitment from hex (32-byte LE field element).
                 let cm_bytes: [u8; 32] = hex::decode(commitment_hex)
-                    .unwrap_or_else(|_| vec![0u8; 32])
+                    .map_err(|e| BridgeError::ConnectionError(format!("invalid commitment hex: {e}")))?  
                     .try_into()
-                    .unwrap_or([0u8; 32]);
+                    .map_err(|_| BridgeError::ConnectionError("commitment not 32 bytes".into()))?;
                 let commitment = pallas::Base::from_repr(cm_bytes)
-                    .unwrap_or(pallas::Base::zero());
+                    .into_option()
+                    .ok_or_else(|| BridgeError::ConnectionError("invalid field element".into()))?;
 
                 Ok(InboundDeposit {
                     commitment,
@@ -716,8 +724,8 @@ mod tests {
         let bridge = LocalBridge;
         let mut committer = StateRootCommitter::new(bridge, 4);
 
-        committer.queue(pallas::Base::zero());
-        committer.queue(pallas::Base::zero());
+        committer.queue(pallas::Base::zero()).unwrap();
+        committer.queue(pallas::Base::zero()).unwrap();
         assert_eq!(committer.pending_count(), 2);
 
         let flushed = committer.flush().unwrap();
