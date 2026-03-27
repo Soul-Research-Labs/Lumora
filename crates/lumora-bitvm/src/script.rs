@@ -114,19 +114,12 @@ pub fn build_disprove_script(kind: StepKind) -> ScriptFragment {
     let tag = step_kind_tag(kind);
 
     let ops = vec![
-        // Stack: <expected_output> <input_hash> <witness> <step_tag>
-        Op::Push(tag.to_vec()),   // push step tag
-        Op::Rot,                  // bring witness to top: <expected> <tag> <input> <witness>
-        // We need: SHA256(input || witness || tag) == expected_output
-        // Rearrange: <expected> <input> <witness> <tag>
-        Op::Swap,                 // <expected> <tag> <witness> <input>
-        Op::Rot,                  // <expected> <witness> <input> <tag>
-        Op::Swap,                 // <expected> <witness> <tag> <input>
-        Op::Rot,                  // <expected> <tag> <input> <witness>
-        Op::Rot,                  // <expected> <input> <witness> <tag>
+        // Stack (bottom→top): <expected_output> <input_hash> <witness>
+        Op::Push(tag.to_vec()),   // <expected> <input> <witness> <tag>
+        // Cat concatenates second-from-top || top:
         Op::Cat,                  // <expected> <input> <witness||tag>
         Op::Cat,                  // <expected> <input||witness||tag>
-        Op::Sha256,               // <expected> <hash>
+        Op::Sha256,               // <expected> SHA256(input||witness||tag)
         Op::Equal,                // <expected == hash>
         Op::Not,                  // fraud = (expected != hash)
     ];
