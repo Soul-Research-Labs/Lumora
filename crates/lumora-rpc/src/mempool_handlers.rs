@@ -62,7 +62,7 @@ pub async fn submit_transfer(
         merkle_root,
         nullifiers: [nf0, nf1],
         output_commitments: [cm0, cm1],
-        fee: 0,
+        fee: req.fee,
         domain_chain_id: req.domain_chain_id,
         domain_app_id: req.domain_app_id,
     }));
@@ -99,7 +99,7 @@ pub async fn submit_withdraw(
         nullifiers: [nf0, nf1],
         output_commitments: [cm0, cm1],
         amount: req.amount,
-        fee: 0,
+        fee: req.fee,
         recipient,
         domain_chain_id: req.domain_chain_id,
         domain_app_id: req.domain_app_id,
