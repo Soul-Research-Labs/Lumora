@@ -210,8 +210,20 @@ impl ProtocolManager {
         if self.assertions.contains_key(&id) {
             return Err(ProtocolError::DuplicateAssertion(id));
         }
+        // Validate the step_kinds vector length matches num_steps to prevent
+        // step_kind validation bypass via truncated assertions.
+        if assertion.step_kinds.len() != assertion.num_steps as usize {
+            return Err(ProtocolError::InvalidStateTransition(
+                format!(
+                    "step_kinds length {} does not match num_steps {}",
+                    assertion.step_kinds.len(),
+                    assertion.num_steps
+                ),
+                "Pending".into(),
+            ));
+        }
 
-        let timeout_height = assertion.assert_height + self.timeout_blocks as u64;
+        let timeout_height = assertion.assert_height.saturating_add(self.timeout_blocks as u64);
         let state = AssertionState::Pending { timeout_height };
         self.assertions.insert(id, (assertion, state));
         Ok(())
@@ -239,7 +251,7 @@ impl ProtocolManager {
                 *state = AssertionState::Challenged {
                     disputed_step: challenge.disputed_step,
                     // Give the operator a window to respond after the challenge.
-                    response_deadline: *timeout_height + RESPONSE_WINDOW_BLOCKS,
+                    response_deadline: timeout_height.saturating_add(RESPONSE_WINDOW_BLOCKS),
                 };
                 Ok(())
             }
@@ -286,8 +298,8 @@ impl ProtocolManager {
                     ));
                 }
                 // Validate that the response's step_kind matches the registered trace.
-                if let Some(expected_kind) = assertion.step_kinds.get(*disputed_step as usize) {
-                    if response.step_kind != *expected_kind {
+                match assertion.step_kinds.get(*disputed_step as usize) {
+                    Some(expected_kind) if response.step_kind != *expected_kind => {
                         return Err(ProtocolError::InvalidStateTransition(
                             format!(
                                 "response step_kind {:?} does not match registered {:?} for step {}",
@@ -296,6 +308,13 @@ impl ProtocolManager {
                             "Responded".into(),
                         ));
                     }
+                    None => {
+                        return Err(ProtocolError::InvalidStepIndex(
+                            *disputed_step,
+                            assertion.step_kinds.len() as u32,
+                        ));
+                    }
+                    _ => {}
                 }
                 *state = AssertionState::Responded {
                     disputed_step: *disputed_step,
@@ -353,7 +372,7 @@ impl ProtocolManager {
                 // Responded: give challengers a verification window to slash.
                 // If not slashed within the window, finalize as valid.
                 AssertionState::Responded { response_height, .. } => {
-                    if current_height >= *response_height + VERIFICATION_WINDOW_BLOCKS {
+                    if current_height >= response_height.saturating_add(VERIFICATION_WINDOW_BLOCKS) {
                         *state = AssertionState::Finalized;
                         finalized.push(*id);
                     }
