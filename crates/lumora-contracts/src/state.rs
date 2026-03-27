@@ -170,15 +170,17 @@ impl PrivacyPoolState {
         &mut self,
         nullifiers: &[pallas::Base; 2],
         output_commitments: &[pallas::Base; 2],
-    ) -> [u64; 2] {
+    ) -> Result<[u64; 2], ContractError> {
         for nf in nullifiers {
-            self.spend_nullifier(*nf);
+            if !self.spend_nullifier(*nf) {
+                return Err(ContractError::NullifierAlreadySpent);
+            }
         }
         let mut leaf_indices = [0u64; 2];
         for (i, cm) in output_commitments.iter().enumerate() {
             leaf_indices[i] = self.insert_commitment(*cm);
         }
-        leaf_indices
+        Ok(leaf_indices)
     }
 
     /// Replay a withdraw event from a trusted sync delta.
@@ -192,7 +194,9 @@ impl PrivacyPoolState {
         amount: u64,
     ) -> Result<[u64; 2], ContractError> {
         for nf in nullifiers {
-            self.spend_nullifier(*nf);
+            if !self.spend_nullifier(*nf) {
+                return Err(ContractError::NullifierAlreadySpent);
+            }
         }
         let mut leaf_indices = [0u64; 2];
         for (i, cm) in change_commitments.iter().enumerate() {

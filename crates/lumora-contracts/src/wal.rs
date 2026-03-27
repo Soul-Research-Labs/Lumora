@@ -374,7 +374,7 @@ pub fn replay_event(state: &mut PrivacyPoolState, event: &PoolEvent) -> Result<(
             output_commitments,
             ..
         } => {
-            state.replay_transfer_event(nullifiers, output_commitments);
+            state.replay_transfer_event(nullifiers, output_commitments)?;
             state.emit_event(event.clone());
         }
         PoolEvent::Withdraw {
