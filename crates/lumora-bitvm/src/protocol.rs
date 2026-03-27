@@ -49,6 +49,8 @@ pub struct Assertion {
     pub claimed_result: bool,
     /// Total number of steps in the trace.
     pub num_steps: u32,
+    /// Step kind for each step in the trace, used to validate challenge responses.
+    pub step_kinds: Vec<StepKind>,
     /// Bitcoin block height at which the assertion was posted.
     pub assert_height: u64,
     /// Operator's bond amount in satoshis.
@@ -87,6 +89,7 @@ impl Assertion {
             public_inputs_hash: trace.public_inputs_hash,
             claimed_result: trace.verification_result,
             num_steps: trace.steps.len() as u32,
+            step_kinds: trace.steps.iter().map(|s| s.kind).collect(),
             assert_height,
             bond_sats,
         }
@@ -223,8 +226,8 @@ impl ProtocolManager {
 
         match state {
             AssertionState::Pending { timeout_height } => {
-                // Bug #19: use `>` so the last allowed block (timeout_height - 1) can still challenge.
-                if challenge.challenge_height > *timeout_height {
+                // Challenges must be strictly before the timeout height.
+                if challenge.challenge_height >= *timeout_height {
                     return Err(ProtocolError::ChallengeAfterTimeout);
                 }
                 if challenge.disputed_step >= assertion.num_steps {
@@ -269,7 +272,7 @@ impl ProtocolManager {
             ));
         }
 
-        let (_assertion, state) = self
+        let (assertion, state) = self
             .assertions
             .get_mut(&response.assertion_id)
             .ok_or(ProtocolError::AssertionNotFound(response.assertion_id))?;
@@ -281,6 +284,18 @@ impl ProtocolManager {
                         response.disputed_step,
                         *disputed_step,
                     ));
+                }
+                // Validate that the response's step_kind matches the registered trace.
+                if let Some(expected_kind) = assertion.step_kinds.get(*disputed_step as usize) {
+                    if response.step_kind != *expected_kind {
+                        return Err(ProtocolError::InvalidStateTransition(
+                            format!(
+                                "response step_kind {:?} does not match registered {:?} for step {}",
+                                response.step_kind, expected_kind, disputed_step
+                            ),
+                            "Responded".into(),
+                        ));
+                    }
                 }
                 *state = AssertionState::Responded {
                     disputed_step: *disputed_step,

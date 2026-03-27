@@ -25,6 +25,7 @@ fuzz_target!(|data: &[u8]| {
         public_inputs_hash: pi_hash,
         claimed_result: true,
         num_steps: 8,
+        step_kinds: vec![lumora_bitvm::trace::StepKind::MsmRound; 8],
         assert_height: 100,
         bond_sats: 10_000_000,
     };
@@ -53,6 +54,7 @@ fuzz_target!(|data: &[u8]| {
                     public_inputs_hash: pi_hash,
                     claimed_result: true,
                     num_steps: 8,
+                    step_kinds: vec![lumora_bitvm::trace::StepKind::MsmRound; 8],
                     assert_height: 100,
                     bond_sats: 10_000_000,
                 };
