@@ -260,6 +260,8 @@ impl Circuit<pallas::Base> for WealthCircuit {
         // and collect (value * active) for summation.
         let mut weighted_values: Vec<AssignedCell<pallas::Base, pallas::Base>> = Vec::new();
         let mut roots: Vec<AssignedCell<pallas::Base, pallas::Base>> = Vec::new();
+        let mut note_assets: Vec<AssignedCell<pallas::Base, pallas::Base>> = Vec::new();
+        let mut active_cells: Vec<AssignedCell<pallas::Base, pallas::Base>> = Vec::new();
         // Track the first active cell to constrain note_0 is always real.
         let mut first_active_cell: Option<AssignedCell<pallas::Base, pallas::Base>> = None;
 
@@ -326,6 +328,10 @@ impl Circuit<pallas::Base> for WealthCircuit {
                 layouter.namespace(|| format!("range_val_{}", i)),
                 &value,
             )?;
+
+            // Save asset cell before it is consumed by commitment hash.
+            note_assets.push(asset.clone());
+            active_cells.push(active.clone());
 
             // Verify note commitment = hash(hash(hash(sk, value), asset), randomness).
             let inner = config.poseidon_config.hash_two(
@@ -520,6 +526,55 @@ impl Circuit<pallas::Base> for WealthCircuit {
                     )?;
 
                     // Constrain product == 0 via a zero constant.
+                    let zero = region.assign_advice_from_constant(
+                        || "zero", config.advice[3], 0, pallas::Base::zero(),
+                    )?;
+                    region.constrain_equal(prod_cell.cell(), zero.cell())
+                },
+            )?;
+        }
+
+        // For each note: constrain active * (note_asset - public_asset) == 0.
+        // When active=1, note_asset must equal the public asset.
+        // When active=0 (padding), the constraint is trivially satisfied.
+        for i in 0..note_assets.len() {
+            // Step 1: diff = note_asset_i - public_asset
+            let asset_diff = layouter.assign_region(
+                || format!("cond_asset_diff_{}", i),
+                |mut region| {
+                    config.sub_selector.enable(&mut region, 0)?;
+
+                    let ai = note_assets[i].copy_advice(
+                        || "note_asset", &mut region, config.advice[0], 0,
+                    )?;
+                    let pa = asset_cell.copy_advice(
+                        || "public_asset", &mut region, config.advice[1], 0,
+                    )?;
+                    let diff = ai.value().zip(pa.value()).map(|(a, b)| *a - *b);
+                    region.assign_advice(
+                        || "diff", config.advice[2], 0, || diff,
+                    )
+                },
+            )?;
+
+            // Step 2: prod = active * diff, constrain prod == 0
+            layouter.assign_region(
+                || format!("cond_asset_mul_{}", i),
+                |mut region| {
+                    config.mul_selector.enable(&mut region, 0)?;
+
+                    let act = active_cells[i].copy_advice(
+                        || "active_i", &mut region, config.advice[0], 0,
+                    )?;
+                    let d = asset_diff.copy_advice(
+                        || "diff", &mut region, config.advice[1], 0,
+                    )?;
+                    let prod = act.value().zip(d.value())
+                        .map(|(a, d)| *a * *d);
+                    let prod_cell = region.assign_advice(
+                        || "prod", config.advice[2], 0, || prod,
+                    )?;
+
                     let zero = region.assign_advice_from_constant(
                         || "zero", config.advice[3], 0, pallas::Base::zero(),
                     )?;
