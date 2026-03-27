@@ -415,6 +415,9 @@ impl Wallet {
                     if total >= amount {
                         return Some((selected, total));
                     }
+                    if selected.len() >= 2 {
+                        break;
+                    }
                 }
                 None
             }
@@ -428,6 +431,9 @@ impl Wallet {
                     total = total.saturating_add(note.note.value);
                     if total >= amount {
                         return Some((selected, total));
+                    }
+                    if selected.len() >= 2 {
+                        break;
                     }
                 }
                 None
