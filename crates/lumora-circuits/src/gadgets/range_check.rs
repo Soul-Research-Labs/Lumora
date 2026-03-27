@@ -84,9 +84,13 @@ impl RangeCheckConfig {
                         let val_u64 = u64::from_le_bytes(
                             repr[0..8].try_into().expect("field repr is 32 bytes"),
                         );
-                        // If the field element exceeds u64, the decomposition
-                        // will produce non-zero q_64 and the gate constraint
-                        // will reject the proof — no need to panic here.
+                        // Witness generation reads only the lower 64 bits,
+                        // but the constraint system forces correctness for the
+                        // full field element: q_0 is copy-constrained to the
+                        // input value, each gate enforces q_cur = 2·q_next + b,
+                        // and q_64 is constrained to zero. Any value ≥ 2^64
+                        // cannot decompose to 64 quotients with q_64 = 0, so
+                        // the proof will fail at constraint verification time.
                         let mut qs = Vec::with_capacity(65);
                         let mut q = val_u64;
                         for _ in 0..64 {
