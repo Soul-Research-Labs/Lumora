@@ -123,6 +123,10 @@ pub trait StateSync {
 ///
 /// Returns the number of events applied.
 pub fn apply_delta(node: &mut super::LumoraNode, delta: &StateDelta) -> Result<usize, &'static str> {
+    let local_height = node.pool.state.commitment_count();
+    if delta.from_height != local_height {
+        return Err("delta from_height does not match local state height");
+    }
     let mut applied = 0;
     for event in &delta.events {
         match event {
@@ -135,7 +139,8 @@ pub fn apply_delta(node: &mut super::LumoraNode, delta: &StateDelta) -> Result<u
             }
             PoolEvent::Transfer { nullifiers, output_commitments, .. } => {
                 // Replay state changes: spend nullifiers, insert commitments.
-                node.pool.state.replay_transfer_event(nullifiers, output_commitments);
+                node.pool.state.replay_transfer_event(nullifiers, output_commitments)
+                    .map_err(|_| "transfer replay failed: nullifier already spent in delta")?;
                 // Keep our local tree mirror in sync.
                 for cm in output_commitments {
                     node.tree.insert(*cm);
@@ -311,6 +316,8 @@ pub enum BroadcastResult {
     AlreadyApplied,
     /// HMAC verification failed.
     AuthFailed,
+    /// Delta application failed.
+    DeltaFailed,
 }
 
 /// Validate and apply a received broadcast to local state.
@@ -337,9 +344,10 @@ pub fn handle_broadcast(
         from_height: local_height,
         events: vec![msg.event.clone()],
     };
-    apply_delta(node, &delta).ok();
-
-    BroadcastResult::Applied
+    match apply_delta(node, &delta) {
+        Ok(_) => BroadcastResult::Applied,
+        Err(_) => BroadcastResult::DeltaFailed,
+    }
 }
 
 // ---------------------------------------------------------------------------
