@@ -105,10 +105,23 @@ pub mod base_vec {
         seq.end()
     }
 
+    /// Maximum number of elements allowed in a deserialized `Vec<pallas::Base>`.
+    /// The Merkle tree depth is 32, so legitimate vectors should never exceed
+    /// a few thousand entries. 100 000 elements × 32 bytes ≈ 3.2 MB, which is
+    /// a generous upper bound that still prevents multi-GB allocations.
+    const MAX_BASE_VEC_LEN: usize = 100_000;
+
     pub fn deserialize<'de, D: serde::Deserializer<'de>>(
         d: D,
     ) -> Result<Vec<pallas::Base>, D::Error> {
         let vecs: Vec<[u8; 32]> = serde::Deserialize::deserialize(d)?;
+        if vecs.len() > MAX_BASE_VEC_LEN {
+            return Err(serde::de::Error::custom(format!(
+                "base_vec too large: {} elements (max {})",
+                vecs.len(),
+                MAX_BASE_VEC_LEN,
+            )));
+        }
         let mut result = Vec::with_capacity(vecs.len());
         for arr in &vecs {
             let opt: Option<pallas::Base> = pallas::Base::from_repr(*arr).into();
