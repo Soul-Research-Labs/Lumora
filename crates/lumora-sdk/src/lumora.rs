@@ -462,7 +462,7 @@ impl Lumora {
                 let pad_rand = pallas::Scalar::random(&mut OsRng);
                 let pad_rand_base = scalar_to_base(pad_rand);
                 let pad_cm = circuit_commitment(owner, 0, 0, pad_rand_base);
-                let pad_receipt = self.node.insert_padding(pad_cm);
+                let pad_receipt = self.node.insert_padding(pad_cm)?;
 
                 let pad_note = Note {
                     owner,

@@ -112,11 +112,12 @@ impl LumoraNode {
     ///
     /// Bypasses deposit validation (min amount) since padding notes carry no
     /// value and don't affect pool balance.
-    pub fn insert_padding(&mut self, commitment: pallas::Base) -> DepositReceipt {
-        let leaf_index = self.pool.state.insert_commitment(commitment);
+    pub fn insert_padding(&mut self, commitment: pallas::Base) -> Result<DepositReceipt, ContractError> {
+        let leaf_index = self.pool.state.insert_commitment(commitment)?;
         let new_root = self.pool.state.current_root();
-        self.tree.insert(commitment);
-        DepositReceipt { leaf_index, new_root }
+        self.tree.try_insert(commitment)
+            .map_err(|_| ContractError::TreeFull)?;
+        Ok(DepositReceipt { leaf_index, new_root })
     }
 
     /// Process a private transfer.
@@ -128,6 +129,12 @@ impl LumoraNode {
         outputs: &[OutputNote; 2],
         fee: u64,
     ) -> Result<(TransferReceipt, lumora_prover::TransferProof), ContractError> {
+        // Pre-check tree capacity for the output commitments (NUM_OUTPUTS = 2)
+        // to prevent pool-tree divergence if pool succeeds but tree.try_insert fails.
+        let needed = lumora_circuits::transfer::NUM_OUTPUTS as u64;
+        if self.tree.len() + needed > (1u64 << lumora_tree::DEPTH) {
+            return Err(ContractError::TreeFull);
+        }
         // Generate proof using local tree state.
         let proof = lumora_prover::prove_transfer(
             &self.transfer_prover,
@@ -169,6 +176,12 @@ impl LumoraNode {
         fee: u64,
         recipient: [u8; 32],
     ) -> Result<(WithdrawReceipt, lumora_prover::WithdrawProof), ContractError> {
+        // Pre-check tree capacity for change commitments (NUM_OUTPUTS = 2)
+        // to prevent pool-tree divergence if pool succeeds but tree.try_insert fails.
+        let needed = lumora_circuits::transfer::NUM_OUTPUTS as u64;
+        if self.tree.len() + needed > (1u64 << lumora_tree::DEPTH) {
+            return Err(ContractError::TreeFull);
+        }
         let proof = lumora_prover::prove_withdraw(
             &self.withdraw_prover,
             inputs,
@@ -201,8 +214,9 @@ impl LumoraNode {
     }
 
     /// Store an encrypted note for later retrieval by the recipient.
-    pub fn relay_note(&mut self, tag: RecipientTag, note: EncryptedNote) {
-        self.note_store.insert(tag, note);
+    /// Returns `true` if the note was stored, `false` if rejected.
+    pub fn relay_note(&mut self, tag: RecipientTag, note: EncryptedNote) -> bool {
+        self.note_store.insert(tag, note)
     }
 
     /// Retrieve encrypted notes for a recipient.

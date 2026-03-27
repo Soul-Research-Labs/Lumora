@@ -119,8 +119,11 @@ impl PrivacyPoolState {
     }
 
     /// Insert a commitment into the tree and record the new root in history.
-    pub fn insert_commitment(&mut self, commitment: pallas::Base) -> u64 {
-        let idx = self.tree.insert(commitment);
+    ///
+    /// Returns `Err(ContractError::TreeFull)` if the tree has reached capacity.
+    pub fn insert_commitment(&mut self, commitment: pallas::Base) -> Result<u64, ContractError> {
+        let idx = self.tree.try_insert(commitment)
+            .map_err(|_| ContractError::TreeFull)?;
         let new_root = self.tree.root();
         self.root_history.push(new_root);
         // Trim to keep only the last ROOT_HISTORY_SIZE roots.
@@ -128,7 +131,7 @@ impl PrivacyPoolState {
             let excess = self.root_history.len() - ROOT_HISTORY_SIZE;
             self.root_history.drain(..excess);
         }
-        idx
+        Ok(idx)
     }
 
     /// Mark a nullifier as spent. Returns false if already spent.
@@ -178,7 +181,7 @@ impl PrivacyPoolState {
         }
         let mut leaf_indices = [0u64; 2];
         for (i, cm) in output_commitments.iter().enumerate() {
-            leaf_indices[i] = self.insert_commitment(*cm);
+            leaf_indices[i] = self.insert_commitment(*cm)?;
         }
         Ok(leaf_indices)
     }
@@ -200,7 +203,7 @@ impl PrivacyPoolState {
         }
         let mut leaf_indices = [0u64; 2];
         for (i, cm) in change_commitments.iter().enumerate() {
-            leaf_indices[i] = self.insert_commitment(*cm);
+            leaf_indices[i] = self.insert_commitment(*cm)?;
         }
         self.pool_balance = self
             .pool_balance
@@ -530,7 +533,7 @@ mod tests {
         let mut state = PrivacyPoolState::new();
         // Insert ROOT_HISTORY_SIZE + 10 commitments, check the history doesn't grow unboundedly.
         for i in 0..(ROOT_HISTORY_SIZE as u64 + 10) {
-            state.insert_commitment(pallas::Base::from(i));
+            state.insert_commitment(pallas::Base::from(i)).unwrap();
         }
         // History should be at most ROOT_HISTORY_SIZE.
         assert!(state.root_history.len() <= ROOT_HISTORY_SIZE);
@@ -541,8 +544,8 @@ mod tests {
         let mut state = PrivacyPoolState::new();
         let cm1 = pallas::Base::from(42u64);
         let cm2 = pallas::Base::from(99u64);
-        state.insert_commitment(cm1);
-        state.insert_commitment(cm2);
+        state.insert_commitment(cm1).unwrap();
+        state.insert_commitment(cm2).unwrap();
         state.pool_balance = 100;
         let nf = pallas::Base::from(123u64);
         state.spend_nullifier(nf);
@@ -566,7 +569,7 @@ mod tests {
     #[test]
     fn state_load_detects_tampering() {
         let mut state = PrivacyPoolState::new();
-        state.insert_commitment(pallas::Base::from(1u64));
+        state.insert_commitment(pallas::Base::from(1u64)).unwrap();
         state.pool_balance = 50;
 
         let dir = std::env::temp_dir().join("lumora_test_tamper");
@@ -594,8 +597,8 @@ mod tests {
         let mut state = PrivacyPoolState::new();
         let cm1 = pallas::Base::from(42u64);
         let cm2 = pallas::Base::from(99u64);
-        state.insert_commitment(cm1);
-        state.insert_commitment(cm2);
+        state.insert_commitment(cm1).unwrap();
+        state.insert_commitment(cm2).unwrap();
         state.pool_balance = 200;
         let nf = pallas::Base::from(555u64);
         state.spend_nullifier(nf);

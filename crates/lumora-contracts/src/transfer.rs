@@ -98,7 +98,7 @@ pub fn execute_transfer(
     // 4. Insert output commitments into the tree.
     let mut leaf_indices = [0u64; NUM_OUTPUTS];
     for (i, cm) in request.output_commitments.iter().enumerate() {
-        leaf_indices[i] = state.insert_commitment(*cm);
+        leaf_indices[i] = state.insert_commitment(*cm)?;
     }
 
     let new_root = state.current_root();

@@ -120,7 +120,7 @@ pub fn execute_withdraw(
     // 6. Insert change commitments.
     let mut change_leaf_indices = [0u64; NUM_OUTPUTS];
     for (i, cm) in request.output_commitments.iter().enumerate() {
-        change_leaf_indices[i] = state.insert_commitment(*cm);
+        change_leaf_indices[i] = state.insert_commitment(*cm)?;
     }
 
     // 7. Decrease pool balance.

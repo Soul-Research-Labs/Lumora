@@ -331,6 +331,15 @@ fn read_wal_entries(path: &Path) -> io::Result<Vec<WalEntry>> {
         }
         let len = u32::from_le_bytes(len_buf) as usize;
 
+        // Reject oversized entries to prevent OOM from corrupted/malicious WAL files.
+        const MAX_WAL_ENTRY_SIZE: usize = 64 * 1024 * 1024; // 64 MB
+        if len > MAX_WAL_ENTRY_SIZE {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("WAL entry too large: {len} bytes (max {MAX_WAL_ENTRY_SIZE})"),
+            ));
+        }
+
         // Read the JSON payload.
         let mut json_buf = vec![0u8; len];
         match reader.read_exact(&mut json_buf) {
@@ -362,7 +371,7 @@ pub fn replay_event(state: &mut PrivacyPoolState, event: &PoolEvent) -> Result<(
         PoolEvent::Deposit {
             commitment, amount, ..
         } => {
-            state.insert_commitment(*commitment);
+            state.insert_commitment(*commitment)?;
             state.pool_balance = state
                 .pool_balance
                 .checked_add(*amount)
@@ -588,7 +597,7 @@ mod tests {
 
         // Pre-populate a state with one commitment.
         let mut base_state = PrivacyPoolState::new();
-        base_state.insert_commitment(pallas::Base::from(55u64));
+        base_state.insert_commitment(pallas::Base::from(55u64)).unwrap();
         base_state.pool_balance = 100;
 
         let (state, replayed) = wal2.recover_onto(base_state).unwrap();

@@ -54,7 +54,7 @@ pub fn execute_deposit(
         .ok_or(ContractError::PoolBalanceOverflow)?;
 
     // Insert commitment into the Merkle tree.
-    let leaf_index = state.insert_commitment(request.commitment);
+    let leaf_index = state.insert_commitment(request.commitment)?;
     let new_root = state.current_root();
 
     state.emit_event(PoolEvent::Deposit {
