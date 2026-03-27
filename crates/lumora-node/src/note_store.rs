@@ -51,10 +51,11 @@ impl NoteStore {
     /// Store an encrypted note for a recipient.
     /// Duplicate notes (same leaf_index under the same tag) are silently ignored.
     /// When a bucket exceeds [`MAX_NOTES_PER_TAG`], the oldest entry is evicted.
-    pub fn insert(&mut self, tag: RecipientTag, note: EncryptedNote) {
+    /// Returns `false` if the note was not stored (tag limit reached or duplicate).
+    pub fn insert(&mut self, tag: RecipientTag, note: EncryptedNote) -> bool {
         // Reject new tags if we've exceeded the total tag limit.
         if !self.notes.contains_key(&tag) && self.notes.len() >= MAX_TOTAL_TAGS {
-            return;
+            return false;
         }
         let bucket = self.notes.entry(tag).or_default();
         // Prevent tag collision / duplicate notes leaking between recipients.
@@ -63,6 +64,9 @@ impl NoteStore {
                 bucket.remove(0);
             }
             bucket.push(note);
+            true
+        } else {
+            false
         }
     }
 
