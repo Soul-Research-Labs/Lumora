@@ -266,6 +266,9 @@ pub struct ByzantineDetector {
     max_history: usize,
     /// Peers quarantined due to accumulated faults.
     quarantined: std::collections::HashSet<String>,
+    /// Permanent set of peers ever detected as equivocators.
+    /// This set survives history eviction and persists across the session.
+    known_equivocators: std::collections::HashSet<String>,
     /// Number of faults before a peer is quarantined.
     quarantine_threshold: usize,
 }
@@ -290,6 +293,7 @@ impl ByzantineDetector {
             faults: Vec::new(),
             max_history: DEFAULT_MAX_CLAIM_HISTORY,
             quarantined: std::collections::HashSet::new(),
+            known_equivocators: std::collections::HashSet::new(),
             quarantine_threshold: QUARANTINE_FAULT_THRESHOLD,
         }
     }
@@ -318,6 +322,7 @@ impl ByzantineDetector {
                     root_b: root,
                 };
                 self.faults.push(fault.clone());
+                self.known_equivocators.insert(peer.to_string());
                 self.maybe_quarantine(peer);
                 return Some(fault);
             }
@@ -367,6 +372,12 @@ impl ByzantineDetector {
     /// Returns `true` if the peer has been quarantined.
     pub fn is_quarantined(&self, peer: &str) -> bool {
         self.quarantined.contains(peer)
+    }
+
+    /// Check if a peer has ever been detected as an equivocator.
+    /// This persists even after the detailed claim history is evicted.
+    pub fn is_known_equivocator(&self, peer: &str) -> bool {
+        self.known_equivocators.contains(peer)
     }
 
     /// Returns the set of all quarantined peer addresses.
