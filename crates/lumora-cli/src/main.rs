@@ -365,7 +365,10 @@ fn run_interactive() {
                         arr.copy_from_slice(&bytes);
                         arr
                     }
-                    _ => [0u8; 32], // default recipient
+                    _ => {
+                        println!("Usage: withdraw <amount> <recipient_hex (32 bytes)>");
+                        continue;
+                    }
                 };
                 match lumora.withdraw(amount, recipient) {
                     Ok(result) => {
