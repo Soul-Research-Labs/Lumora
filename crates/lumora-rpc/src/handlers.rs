@@ -400,12 +400,22 @@ pub async fn batch_verify(
         )));
     }
 
+    const MAX_BATCH_BYTES: usize = 2 * 1024 * 1024; // 2 MB total for all proofs
+
     let mut items = Vec::with_capacity(req.proofs.len());
+    let mut total_proof_bytes: usize = 0;
     for (i, p) in req.proofs.iter().enumerate() {
         let proof_bytes = hex::decode(&p.proof)
             .map_err(|_| bad_request(format!("invalid proof hex at index {i}")))?;
         if proof_bytes.len() > MAX_PROOF_BYTES {
             return Err(bad_request(format!("proof at index {i} exceeds 512 KB")));
+        }
+        total_proof_bytes += proof_bytes.len();
+        if total_proof_bytes > MAX_BATCH_BYTES {
+            return Err(bad_request(format!(
+                "total batch proof data exceeds {} bytes",
+                MAX_BATCH_BYTES
+            )));
         }
         let root = parse_field(&p.merkle_root)
             .map_err(|_| bad_request(format!("invalid merkle_root at index {i}")))?;
