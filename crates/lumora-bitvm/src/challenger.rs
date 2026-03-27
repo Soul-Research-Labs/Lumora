@@ -487,6 +487,7 @@ mod tests {
             output_hash: step.output_hash,
             witness: step.witness.clone(),
             merkle_proof: proof,
+            response_height: 200,
         };
 
         assert_eq!(c.verify_response(&a, &response), VerifyOutcome::Honest);
@@ -507,6 +508,7 @@ mod tests {
             output_hash: step.output_hash,
             witness: step.witness.clone(),
             merkle_proof: vec![[0xFF; 32]], // bad proof
+            response_height: 200,
         };
 
         assert_eq!(
@@ -531,6 +533,7 @@ mod tests {
             output_hash: [1; 32],
             witness: vec![0x01],
             merkle_proof: merkle_proof_for_step(&leaves, 0),
+            response_height: 200,
         };
 
         let tx = c.build_disprove(&a.id, &response);

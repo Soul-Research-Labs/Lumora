@@ -195,7 +195,7 @@ fn test_dishonest_operator_caught() {
 
     // Operator responds to the challenge
     let response = operator
-        .respond_to_challenge(&challenge)
+        .respond_to_challenge(&challenge, 200)
         .expect("operator must respond");
 
     assert_eq!(response.disputed_step, 3);

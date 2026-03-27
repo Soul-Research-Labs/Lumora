@@ -24,6 +24,9 @@ use crate::trace::{StepKind, VerificationTrace};
 /// Number of blocks the operator has to respond after a challenge is filed.
 const RESPONSE_WINDOW_BLOCKS: u64 = 10;
 
+/// Number of blocks challengers have to verify a response and slash if fraudulent.
+const VERIFICATION_WINDOW_BLOCKS: u64 = 10;
+
 // ---------------------------------------------------------------------------
 // Assertion — operator's on-chain claim
 // ---------------------------------------------------------------------------
@@ -135,6 +138,8 @@ pub struct ChallengeResponse {
     pub witness: Vec<u8>,
     /// Merkle proof: sibling hashes from leaf to root.
     pub merkle_proof: Vec<[u8; 32]>,
+    /// Block height at which the operator submits this response.
+    pub response_height: u64,
 }
 
 /// Maximum allowed witness size in bytes (1 MiB).
@@ -169,6 +174,8 @@ pub enum AssertionState {
     Responded {
         /// The disputed step index.
         disputed_step: u32,
+        /// Block height at which the operator responded.
+        response_height: u64,
     },
     /// The assertion was proven fraudulent (bond slashed).
     Slashed,
@@ -277,6 +284,7 @@ impl ProtocolManager {
                 }
                 *state = AssertionState::Responded {
                     disputed_step: *disputed_step,
+                    response_height: response.response_height,
                 };
                 Ok(())
             }
@@ -324,6 +332,14 @@ impl ProtocolManager {
                 AssertionState::Challenged { response_deadline, .. } => {
                     if current_height >= *response_deadline {
                         *state = AssertionState::Slashed;
+                        finalized.push(*id);
+                    }
+                }
+                // Responded: give challengers a verification window to slash.
+                // If not slashed within the window, finalize as valid.
+                AssertionState::Responded { response_height, .. } => {
+                    if current_height >= *response_height + VERIFICATION_WINDOW_BLOCKS {
+                        *state = AssertionState::Finalized;
                         finalized.push(*id);
                     }
                 }
@@ -522,12 +538,13 @@ mod tests {
             output_hash: [1u8; 32],
             witness: vec![],
             merkle_proof: vec![],
+            response_height: 160,
         };
         pm.process_response(&response).unwrap();
 
         assert_eq!(
             pm.get_state(&assertion_id),
-            Some(&AssertionState::Responded { disputed_step: 0 })
+            Some(&AssertionState::Responded { disputed_step: 0, response_height: 160 })
         );
 
         // Slash the operator (fraud proven after Script verification)

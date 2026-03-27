@@ -85,8 +85,12 @@ fuzz_target!(|data: &[u8]| {
                 let response = lumora_bitvm::protocol::ChallengeResponse {
                     assertion_id: assertion.id.clone(),
                     disputed_step: step,
-                    step_witness: vec![0xAB; 16],
+                    step_kind: lumora_bitvm::trace::StepKind::TranscriptInit,
+                    input_hash: [0u8; 32],
+                    output_hash: [0u8; 32],
+                    witness: vec![0xAB; 16],
                     merkle_proof,
+                    response_height: 200,
                 };
                 let _ = mgr.process_response(&response);
             }

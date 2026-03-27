@@ -115,6 +115,7 @@ impl Operator {
     pub fn respond_to_challenge(
         &mut self,
         challenge: &Challenge,
+        current_height: u64,
     ) -> Result<ChallengeResponse, ProtocolError> {
         // Process challenge in protocol state machine
         self.protocol.process_challenge(challenge)?;
@@ -149,6 +150,7 @@ impl Operator {
             output_hash: step.output_hash,
             witness: step.witness.clone(),
             merkle_proof,
+            response_height: current_height,
         };
 
         // Process response in state machine
@@ -396,7 +398,7 @@ mod tests {
             challenge_height: 105,
         };
 
-        let response = op.respond_to_challenge(&challenge).unwrap();
+        let response = op.respond_to_challenge(&challenge, 110).unwrap();
         assert_eq!(response.assertion_id, id);
         assert_eq!(response.disputed_step, 1);
         assert_eq!(response.step_kind, StepKind::MsmRound);
@@ -417,7 +419,7 @@ mod tests {
             challenge_height: 105,
         };
 
-        assert!(op.respond_to_challenge(&challenge).is_err());
+        assert!(op.respond_to_challenge(&challenge, 110).is_err());
     }
 
     #[test]
