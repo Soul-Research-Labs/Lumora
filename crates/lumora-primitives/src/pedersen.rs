@@ -31,7 +31,11 @@ pub fn generator_g() -> pallas::Point {
 ///
 /// We derive H by hashing a domain separator to the curve, ensuring
 /// the discrete log between G and H is unknown.
-pub fn generator_h() -> pallas::Point {
+///
+/// Returns `None` if no valid curve point is found within
+/// `MAX_GENERATOR_ATTEMPTS` (should never happen with the current
+/// Poseidon/Pallas parameters — indicates a serious configuration error).
+pub fn try_generator_h() -> Option<pallas::Point> {
     // Hash a domain separator to get a seed field element.
     let a = pallas::Base::from(0x5A415345_4F4E5F48u64); // "ZASEON_H" as u64
     let b = pallas::Base::from(0x50454445_5253454Eu64); // "PEDERSEN" as u64
@@ -49,17 +53,21 @@ pub fn generator_h() -> pallas::Point {
             let affine: pallas::Affine = ct_opt.expect("is_some() was true");
             let pt: pallas::Point = affine.into();
             if !bool::from(pt.is_identity()) {
-                return pt;
+                return Some(pt);
             }
         }
         counter += pallas::Base::one();
         let _ = attempt; // suppress unused warning on the last iteration
     }
-    panic!(
-        "Pedersen generator_h: no valid curve point found after {} attempts; \
+    None
+}
+
+/// Convenience wrapper that panics on failure (suitable for `OnceLock::get_or_init`).
+pub fn generator_h() -> pallas::Point {
+    try_generator_h().expect(
+        "Pedersen generator_h: no valid curve point found after 256 attempts; \
          check Poseidon hash or curve parameters",
-        MAX_GENERATOR_ATTEMPTS
-    );
+    )
 }
 
 /// Pedersen commitment: `C = value·G + randomness·H`
