@@ -178,7 +178,11 @@ pub async fn transfer(
         .pool
         .transfer(&transfer_req)
         .map_err(contract_err)?;
-    let root = node.tree.root();
+    // Keep local tree mirror in sync so the node can generate proofs later.
+    for cm in &transfer_req.output_commitments {
+        node.tree.try_insert(*cm).map_err(|_| contract_err(ContractError::TreeFull))?;
+    }
+    let root = node.current_root();
     tracing::info!(
         leaf_0 = receipt.leaf_indices[0],
         leaf_1 = receipt.leaf_indices[1],
@@ -226,7 +230,11 @@ pub async fn withdraw(
         .pool
         .withdraw(&withdraw_req)
         .map_err(contract_err)?;
-    let root = node.tree.root();
+    // Keep local tree mirror in sync so the node can generate proofs later.
+    for cm in &withdraw_req.output_commitments {
+        node.tree.try_insert(*cm).map_err(|_| contract_err(ContractError::TreeFull))?;
+    }
+    let root = node.current_root();
     tracing::info!(
         amount = receipt.amount,
         domain_chain_id = ?req.domain_chain_id,
