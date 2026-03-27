@@ -143,7 +143,8 @@ pub fn apply_delta(node: &mut super::LumoraNode, delta: &StateDelta) -> Result<u
                     .map_err(|_| "transfer replay failed: nullifier already spent in delta")?;
                 // Keep our local tree mirror in sync.
                 for cm in output_commitments {
-                    node.tree.insert(*cm);
+                    node.tree.try_insert(*cm)
+                        .map_err(|_| "tree full during transfer delta replay")?;
                 }
                 node.pool.state.emit_event(event.clone());
                 applied += 1;
@@ -154,7 +155,8 @@ pub fn apply_delta(node: &mut super::LumoraNode, delta: &StateDelta) -> Result<u
                 node.pool.state.replay_withdraw_event(nullifiers, change_commitments, *amount)
                     .map_err(|_| "withdraw replay failed: pool balance underflow in delta")?;
                 for cm in change_commitments {
-                    node.tree.insert(*cm);
+                    node.tree.try_insert(*cm)
+                        .map_err(|_| "tree full during withdraw delta replay")?;
                 }
                 node.pool.state.emit_event(event.clone());
                 applied += 1;

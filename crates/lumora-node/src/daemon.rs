@@ -113,6 +113,10 @@ impl LumoraNode {
     /// Bypasses deposit validation (min amount) since padding notes carry no
     /// value and don't affect pool balance.
     pub fn insert_padding(&mut self, commitment: pallas::Base) -> Result<DepositReceipt, ContractError> {
+        // Pre-check mirror tree capacity to prevent pool/mirror divergence.
+        if self.tree.len() >= (1u64 << lumora_tree::DEPTH) {
+            return Err(ContractError::TreeFull);
+        }
         let leaf_index = self.pool.state.insert_commitment(commitment)?;
         let new_root = self.pool.state.current_root();
         self.tree.try_insert(commitment)
