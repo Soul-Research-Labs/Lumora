@@ -1435,6 +1435,7 @@ dependencies = [
  "lumora-note",
  "lumora-primitives",
  "lumora-sdk",
+ "lumora-tree",
  "lumora-verifier",
  "metrics",
  "metrics-exporter-prometheus",

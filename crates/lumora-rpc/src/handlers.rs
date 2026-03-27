@@ -174,6 +174,13 @@ pub async fn transfer(
     };
 
     let mut node = state.write().await;
+    // Pre-check tree capacity for output commitments to prevent pool-tree
+    // divergence: if pool.transfer() succeeds but tree insertion later fails,
+    // the pool's internal tree and our mirror tree permanently diverge.
+    let needed = transfer_req.output_commitments.len() as u64;
+    if node.tree.len() + needed > (1u64 << lumora_tree::DEPTH) {
+        return Err(contract_err(ContractError::TreeFull));
+    }
     let receipt = node
         .pool
         .transfer(&transfer_req)
@@ -226,6 +233,13 @@ pub async fn withdraw(
     };
 
     let mut node = state.write().await;
+    // Pre-check tree capacity for change commitments to prevent pool-tree
+    // divergence: if pool.withdraw() succeeds but tree insertion later fails,
+    // the pool's internal tree and our mirror tree permanently diverge.
+    let needed = withdraw_req.output_commitments.len() as u64;
+    if node.tree.len() + needed > (1u64 << lumora_tree::DEPTH) {
+        return Err(contract_err(ContractError::TreeFull));
+    }
     let receipt = node
         .pool
         .withdraw(&withdraw_req)
@@ -338,7 +352,14 @@ pub async fn relay_note(
     };
 
     let mut node = state.write().await;
-    node.relay_note(tag, note);
+    if !node.relay_note(tag, note) {
+        return Err((
+            StatusCode::INSUFFICIENT_STORAGE,
+            Json(ErrorResp {
+                error: "note store is full or note is a duplicate".into(),
+            }),
+        ));
+    }
     Ok(StatusCode::CREATED)
 }
 
