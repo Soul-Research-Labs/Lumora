@@ -167,13 +167,21 @@ impl Wallet {
     }
 
     /// Save the wallet to a JSON file.
+    ///
+    /// Uses write-to-temp + rename for crash safety: if the process dies
+    /// mid-write the original file remains intact.
     pub fn save(&self, path: &std::path::Path) -> std::io::Result<()> {
         use zeroize::Zeroize;
         let mut json = serde_json::to_string_pretty(self)
             .map_err(std::io::Error::other)?;
-        let result = write_sensitive_file(path, json.as_bytes());
+
+        // Write to a sibling temp file, then atomically rename.
+        let tmp = path.with_extension("tmp");
+        let result = write_sensitive_file(&tmp, json.as_bytes());
         json.zeroize();
-        result
+        result?;
+        std::fs::rename(&tmp, path)?;
+        Ok(())
     }
 
     /// Load the wallet from a JSON file.
