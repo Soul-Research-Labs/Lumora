@@ -60,19 +60,14 @@ pub fn execute_transfer(
         return Err(ContractError::UnknownMerkleRoot);
     }
 
-    // 2. Check for duplicate nullifiers within the same transfer.
-    if request.nullifiers[0] == request.nullifiers[1] {
-        return Err(ContractError::NullifierAlreadySpent);
-    }
-
-    // 3. Check none of the nullifiers have been spent in previous transactions.
+    // 2. Check none of the nullifiers have been spent in previous transactions.
     for nf in &request.nullifiers {
         if state.is_nullifier_spent(*nf) {
             return Err(ContractError::NullifierAlreadySpent);
         }
     }
 
-    // 3. Verify the ZK proof.
+    // 2. Verify the ZK proof.
     // Distinguish invalid proof (constraint failure) from verifier malfunction.
     match lumora_verifier::verify_transfer(
         &verifier.params,
@@ -92,7 +87,7 @@ pub fn execute_transfer(
         }
     }
 
-    // 4. Register nullifiers as spent (AFTER proof verification).
+    // 3. Register nullifiers as spent (AFTER proof verification).
     for nf in &request.nullifiers {
         let inserted = state.spend_nullifier(*nf);
         if !inserted {
@@ -100,7 +95,7 @@ pub fn execute_transfer(
         }
     }
 
-    // 5. Insert output commitments into the tree.
+    // 4. Insert output commitments into the tree.
     let mut leaf_indices = [0u64; NUM_OUTPUTS];
     for (i, cm) in request.output_commitments.iter().enumerate() {
         leaf_indices[i] = state.insert_commitment(*cm);
