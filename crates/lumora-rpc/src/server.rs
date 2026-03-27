@@ -212,11 +212,18 @@ fn router_with_state(state: AppState) -> Router {
                                 .map(|ip| trusted_proxies.contains(&ip))
                                 .unwrap_or(false);
                             if from_trusted_proxy {
+                                // Walk the XFF chain right-to-left, skipping
+                                // entries that are trusted proxies themselves,
+                                // to extract the real client IP.
                                 req.headers()
                                     .get("x-forwarded-for")
                                     .and_then(|v| v.to_str().ok())
-                                    .and_then(|s| s.split(',').next_back())
-                                    .and_then(|s| s.trim().parse().ok())
+                                    .and_then(|s| {
+                                        s.split(',')
+                                            .rev()
+                                            .filter_map(|e| e.trim().parse::<IpAddr>().ok())
+                                            .find(|ip| !trusted_proxies.contains(ip))
+                                    })
                             } else {
                                 None
                             }
