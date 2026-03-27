@@ -276,7 +276,7 @@ impl GovernanceRegistry {
             .filter(|p| {
                 matches!(
                     &p.state,
-                    ProposalState::Proposed | ProposalState::Approved
+                    ProposalState::Proposed | ProposalState::Approved | ProposalState::Scheduled { .. }
                 ) && p.expiry_height.is_some_and(|h| current_height > h)
             })
             .map(|p| p.id.clone())
