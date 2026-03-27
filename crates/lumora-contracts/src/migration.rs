@@ -77,11 +77,16 @@ pub fn detect_version<P: AsRef<Path>>(path: P) -> io::Result<Option<u32>> {
 /// The original file is preserved as `<path>.v0.bak`.
 pub fn migrate_v0_to_v1<P: AsRef<Path>>(path: P) -> io::Result<()> {
     let path = path.as_ref();
-    let state = crate::PrivacyPoolState::load(path)?;
 
-    // Back up the original
+    // Read the raw bytes first so the backup is an exact copy of what we
+    // parsed, eliminating any TOCTOU gap between load and copy.
+    let raw = std::fs::read(path)?;
+
     let backup = path.with_extension("v0.bak");
-    std::fs::copy(path, &backup)?;
+    std::fs::write(&backup, &raw)?;
+
+    let state: crate::PrivacyPoolState = serde_json::from_slice(&raw)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
     // Re-save as v1 (the current `save` method writes v1 envelope + HMAC)
     state.save(path)?;
