@@ -126,6 +126,11 @@ fn router_with_state(state: AppState) -> Router {
 
     if api_key.is_some() {
         tracing::info!("API key authentication enabled (via {API_KEY_ENV})");
+    } else {
+        tracing::warn!(
+            "No API key configured ({API_KEY_ENV} is unset or empty). \
+             All endpoints are unauthenticated — set {API_KEY_ENV} in production."
+        );
     }
 
     // Versioned API routes — all endpoints under /v1/.
@@ -227,10 +232,10 @@ fn router_with_state(state: AppState) -> Router {
                         return Err(StatusCode::TOO_MANY_REQUESTS);
                     }
                 }
-                // API key check (skip for /health and /metrics).
+                // API key check (skip for /health only — /metrics requires auth).
                 if let Some(expected) = &key {
                     let path = req.uri().path();
-                    if path != "/health" && path != "/metrics" {
+                    if path != "/health" {
                         let provided = req
                             .headers()
                             .get("x-api-key")
