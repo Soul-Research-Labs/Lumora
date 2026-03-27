@@ -486,8 +486,38 @@ fn build_control_block(
     let target_script = serialize_script_fragment(target_leaf);
     let target_hash = tagged_hash("TapLeaf", &[&[0xC0u8], target_script.as_slice()].concat());
     let path = merkle_path_for_leaf(tree, &target_hash);
+
+    // Determine output key Y-parity per BIP 341.
+    let tree_hash = hash_taproot_tree(tree);
+    let tweak = tagged_hash("TapTweak", &[internal_key.0.as_slice(), &tree_hash].concat());
+    let parity_bit = {
+        let mut compressed = [0u8; 33];
+        compressed[0] = 0x02;
+        compressed[1..].copy_from_slice(&internal_key.0);
+        let y_is_odd = k256::EncodedPoint::from_bytes(&compressed)
+            .ok()
+            .and_then(|ep| {
+                let ap = AffinePoint::from_encoded_point(&ep);
+                if bool::from(ap.is_some()) {
+                    Some(ProjectivePoint::from(ap.unwrap()))
+                } else {
+                    None
+                }
+            })
+            .map(|p| {
+                let t = <Scalar as Reduce<U256>>::reduce_bytes(&tweak.into());
+                let tweaked_point = p + ProjectivePoint::GENERATOR * t;
+                let affine = tweaked_point.to_affine();
+                let encoded = affine.to_encoded_point(false);
+                // In uncompressed form, Y parity is determined by the last byte
+                let y_bytes = encoded.y().expect("non-identity");
+                y_bytes[31] & 1 == 1
+            });
+        if y_is_odd == Some(true) { 1u8 } else { 0u8 }
+    };
+
     let mut cb = Vec::with_capacity(1 + 32 + path.len() * 32);
-    cb.push(0xC0); // leaf version, even parity
+    cb.push(0xC0 | parity_bit);
     cb.extend_from_slice(&internal_key.0);
     for sibling in &path {
         cb.extend_from_slice(sibling);
