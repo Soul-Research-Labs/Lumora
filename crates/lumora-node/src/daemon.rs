@@ -144,7 +144,8 @@ impl LumoraNode {
 
         // Update local tree with output commitments.
         for cm in &proof.output_commitments {
-            self.tree.insert(*cm);
+            self.tree.try_insert(*cm)
+                .map_err(|e| ContractError::ProofError(format!("tree insert failed: {e:?}")))?;
         }
 
         Ok((receipt, proof))
@@ -185,7 +186,8 @@ impl LumoraNode {
 
         // Update local tree with change commitments.
         for cm in &proof.output_commitments {
-            self.tree.insert(*cm);
+            self.tree.try_insert(*cm)
+                .map_err(|e| ContractError::ProofError(format!("tree insert failed: {e:?}")))?;
         }
 
         Ok((receipt, proof))
