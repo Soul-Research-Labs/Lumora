@@ -91,13 +91,13 @@ impl LumoraNode {
         commitment: pallas::Base,
         amount: u64,
     ) -> Result<DepositReceipt, ContractError> {
-        // Insert into the Merkle tree first — try_insert returns an error if
-        // the tree is full, so we never credit the pool balance for a
-        // commitment that has no Merkle path (which would be unspendable).
+        // Deposit into the pool first — pool.deposit() validates the
+        // request (e.g. minimum amount). If we inserted into the tree first
+        // and the pool rejected the deposit, the trees would diverge.
+        let receipt = self.pool.deposit(&DepositRequest { commitment, amount })?;
         self.tree
             .try_insert(commitment)
-            .map_err(|_| ContractError::TreeFull)?;
-        let receipt = self.pool.deposit(&DepositRequest { commitment, amount })?;
+            .map_err(|_| ContractError::TreeFull)?;;
         Ok(receipt)
     }
 
@@ -292,28 +292,26 @@ impl LumoraNode {
         let deposits = bridge.poll_deposits()?;
         let count = deposits.len();
         for dep in &deposits {
-            // Insert into the tree first — if the tree is full, we must not
-            // credit the pool for a commitment that has no Merkle path.
-            self.tree.try_insert(dep.commitment).map_err(|_| {
-                BridgeError::DepositRejected(format!(
-                    "tree full when inserting commitment {}",
-                    hex::encode(dep.commitment.to_repr())
-                ))
-            })?;
+            // Deposit into pool first — validates the request. If we inserted
+            // into the tree first and pool rejected the deposit, the trees
+            // would permanently diverge.
             match self.pool.deposit(&DepositRequest {
                 commitment: dep.commitment,
                 amount: dep.amount,
             }) {
                 Ok(_) => {}
                 Err(e) => {
-                    // A deposit error means the pool and tree have diverged;
-                    // propagate as a bridge error so the caller can stop and
-                    // perform reconciliation rather than silently continuing.
                     return Err(BridgeError::DepositRejected(
                         format!("deposit commitment {} failed: {e}", hex::encode(dep.commitment.to_repr()))
                     ));
                 }
             }
+            self.tree.try_insert(dep.commitment).map_err(|_| {
+                BridgeError::DepositRejected(format!(
+                    "tree full when inserting commitment {}",
+                    hex::encode(dep.commitment.to_repr())
+                ))
+            })?;
         }
         Ok(count)
     }
