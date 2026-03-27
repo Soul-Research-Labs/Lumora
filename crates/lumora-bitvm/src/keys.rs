@@ -133,7 +133,9 @@ pub fn aggregate_keys(
 pub enum SessionState {
     /// Session initialized, awaiting nonce commitments.
     Initialized,
-    /// Nonces exchanged, ready to produce partial signatures.
+    /// Nonces committed, awaiting nonce reveals.
+    NoncesCommitted,
+    /// Nonce points revealed and verified, ready to produce partial signatures.
     NoncesExchanged,
     /// Partial signatures collected, session complete.
     Complete,
@@ -146,6 +148,30 @@ pub struct NonceCommitment {
     pub pubkey: XOnlyPubKey,
     /// Commitment to the nonce: `SHA256(nonce_point)`.
     pub commitment: [u8; 32],
+}
+
+/// A revealed nonce point from one participant (sent after commitments are exchanged).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NonceReveal {
+    /// Participant's public key.
+    pub pubkey: XOnlyPubKey,
+    /// The compressed SEC1-encoded nonce point (33 bytes), hex-encoded.
+    #[serde(with = "hex_33")]
+    pub nonce_point: [u8; 33],
+}
+
+mod hex_33 {
+    use serde::{self, Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(bytes: &[u8; 33], s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&hex::encode(bytes))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<[u8; 33], D::Error> {
+        let s = String::deserialize(d)?;
+        let v = hex::decode(&s).map_err(serde::de::Error::custom)?;
+        v.try_into().map_err(|_| serde::de::Error::custom("expected 33 bytes"))
+    }
 }
 
 /// A partial signature from one participant.
@@ -170,6 +196,8 @@ pub struct SigningSession {
     pub state: SessionState,
     /// Collected nonce commitments.
     pub nonce_commitments: Vec<NonceCommitment>,
+    /// Revealed nonce points (verified against commitments).
+    pub nonce_reveals: Vec<NonceReveal>,
     /// Collected partial signatures.
     pub partial_sigs: Vec<PartialSignature>,
 }
@@ -191,6 +219,7 @@ impl SigningSession {
             message,
             state: SessionState::Initialized,
             nonce_commitments: Vec::new(),
+            nonce_reveals: Vec::new(),
             partial_sigs: Vec::new(),
         }
     }
@@ -210,6 +239,48 @@ impl SigningSession {
 
         // Both participants submitted nonces
         if self.nonce_commitments.len() == 2 {
+            self.state = SessionState::NoncesCommitted;
+        }
+
+        Ok(())
+    }
+
+    /// Reveal a nonce point from a participant (after both commitments are collected).
+    ///
+    /// Verifies that `SHA256(nonce_point)` matches the previously submitted commitment.
+    pub fn reveal_nonce(&mut self, reveal: NonceReveal) -> Result<(), SessionError> {
+        if self.state != SessionState::NoncesCommitted {
+            return Err(SessionError::InvalidState(
+                "can only reveal nonces in NoncesCommitted state".into(),
+            ));
+        }
+
+        // Find the matching commitment and verify.
+        let nc = self.nonce_commitments.iter()
+            .find(|nc| nc.pubkey == reveal.pubkey)
+            .ok_or_else(|| SessionError::InvalidState(
+                "no commitment found for this pubkey".into(),
+            ))?;
+
+        let expected_commitment = {
+            let mut h = Sha256::new();
+            h.update(reveal.nonce_point);
+            let result: [u8; 32] = h.finalize().into();
+            result
+        };
+        if nc.commitment != expected_commitment {
+            return Err(SessionError::InvalidState(
+                "nonce point does not match commitment".into(),
+            ));
+        }
+
+        if self.nonce_reveals.iter().any(|r| r.pubkey == reveal.pubkey) {
+            return Err(SessionError::DuplicateNonce(reveal.pubkey));
+        }
+
+        self.nonce_reveals.push(reveal);
+
+        if self.nonce_reveals.len() == 2 {
             self.state = SessionState::NoncesExchanged;
         }
 
@@ -248,16 +319,21 @@ impl SigningSession {
             ));
         }
 
-        // Compute the aggregate nonce R from the nonce commitments.
-        // In a full MuSig2 flow, participants exchange nonce *points*,
-        // not just commitments. Here we derive R deterministically from
-        // the commitments for compatibility with the session model.
-        let mut h_r = Sha256::new();
-        h_r.update(b"lumora-bitvm:agg-nonce");
-        for nc in &self.nonce_commitments {
-            h_r.update(nc.commitment);
+        // Compute the aggregate nonce R from the revealed nonce points.
+        // R = R_1 + R_2 (point addition on secp256k1).
+        let mut agg_r = ProjectivePoint::IDENTITY;
+        for reveal in &self.nonce_reveals {
+            let point = AffinePoint::from_encoded_point(
+                &k256::EncodedPoint::from_bytes(&reveal.nonce_point)
+                    .map_err(|_| SessionError::InvalidState("invalid nonce point encoding".into()))?,
+            );
+            if bool::from(point.is_none()) {
+                return Err(SessionError::InvalidState("nonce point not on curve".into()));
+            }
+            agg_r += ProjectivePoint::from(point.unwrap());
         }
-        let r_bytes: [u8; 32] = h_r.finalize().into();
+        let r_xonly = point_to_xonly(&agg_r);
+        let r_bytes = r_xonly.0;
 
         // Compute s = s1 + s2 (mod n) using real scalar addition
         let s1 = hash_to_scalar(&self.partial_sigs[0].sig);
@@ -394,6 +470,9 @@ mod tests {
 
     #[test]
     fn test_signing_session_lifecycle() {
+        use k256::elliptic_curve::sec1::ToEncodedPoint;
+        use sha2::{Digest, Sha256};
+
         let (op, ch) = test_keys();
         let agg = aggregate_keys(&op, &ch);
         let message = [0x42u8; 32];
@@ -401,11 +480,26 @@ mod tests {
         let mut session = SigningSession::new(agg, message);
         assert_eq!(session.state, SessionState::Initialized);
 
-        // Add nonces
+        // Generate test nonce points (using generator * scalar as nonce)
+        let nonce_scalar_1 = k256::Scalar::from(7u64);
+        let nonce_point_1 = (k256::ProjectivePoint::GENERATOR * nonce_scalar_1).to_affine();
+        let nonce_bytes_1: [u8; 33] = nonce_point_1
+            .to_encoded_point(true).as_bytes().try_into().unwrap();
+
+        let nonce_scalar_2 = k256::Scalar::from(13u64);
+        let nonce_point_2 = (k256::ProjectivePoint::GENERATOR * nonce_scalar_2).to_affine();
+        let nonce_bytes_2: [u8; 33] = nonce_point_2
+            .to_encoded_point(true).as_bytes().try_into().unwrap();
+
+        // Compute commitments = SHA256(nonce_point)
+        let commit_1: [u8; 32] = Sha256::digest(nonce_bytes_1).into();
+        let commit_2: [u8; 32] = Sha256::digest(nonce_bytes_2).into();
+
+        // Add nonce commitments
         session
             .add_nonce(NonceCommitment {
                 pubkey: op,
-                commitment: [1u8; 32],
+                commitment: commit_1,
             })
             .unwrap();
         assert_eq!(session.state, SessionState::Initialized);
@@ -413,7 +507,23 @@ mod tests {
         session
             .add_nonce(NonceCommitment {
                 pubkey: ch,
-                commitment: [2u8; 32],
+                commitment: commit_2,
+            })
+            .unwrap();
+        assert_eq!(session.state, SessionState::NoncesCommitted);
+
+        // Reveal nonce points
+        session
+            .reveal_nonce(NonceReveal {
+                pubkey: op,
+                nonce_point: nonce_bytes_1,
+            })
+            .unwrap();
+
+        session
+            .reveal_nonce(NonceReveal {
+                pubkey: ch,
+                nonce_point: nonce_bytes_2,
             })
             .unwrap();
         assert_eq!(session.state, SessionState::NoncesExchanged);
