@@ -91,13 +91,20 @@ impl LumoraNode {
         commitment: pallas::Base,
         amount: u64,
     ) -> Result<DepositReceipt, ContractError> {
+        // Pre-check tree capacity to prevent pool-tree divergence:
+        // if pool.deposit() succeeds but tree.try_insert() fails, the
+        // pool's internal tree would have the commitment but our mirror
+        // tree would not, permanently diverging state.
+        if self.tree.len() >= (1u64 << lumora_tree::DEPTH) {
+            return Err(ContractError::TreeFull);
+        }
         // Deposit into the pool first — pool.deposit() validates the
         // request (e.g. minimum amount). If we inserted into the tree first
         // and the pool rejected the deposit, the trees would diverge.
         let receipt = self.pool.deposit(&DepositRequest { commitment, amount })?;
         self.tree
             .try_insert(commitment)
-            .map_err(|_| ContractError::TreeFull)?;;
+            .map_err(|_| ContractError::TreeFull)?;
         Ok(receipt)
     }
 
@@ -291,6 +298,15 @@ impl LumoraNode {
         };
         let deposits = bridge.poll_deposits()?;
         let count = deposits.len();
+        // Pre-check tree capacity for the entire batch to avoid partial
+        // application that would leave pool and tree out of sync.
+        let remaining_capacity = (1u64 << lumora_tree::DEPTH).saturating_sub(self.tree.len());
+        if (count as u64) > remaining_capacity {
+            return Err(BridgeError::DepositRejected(format!(
+                "batch of {} deposits exceeds remaining tree capacity of {}",
+                count, remaining_capacity
+            )));
+        }
         for dep in &deposits {
             // Deposit into pool first — validates the request. If we inserted
             // into the tree first and pool rejected the deposit, the trees
