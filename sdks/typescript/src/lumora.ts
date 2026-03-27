@@ -218,6 +218,12 @@ export class LumoraClient {
         `Invalid URL scheme '${parsed.protocol}'. Only 'http:' and 'https:' are allowed.`,
       );
     }
+    if (apiKey && parsed.protocol === "http:") {
+      console.warn(
+        "[LumoraClient] WARNING: API key is being sent over plain HTTP. " +
+        "Use HTTPS in production to protect credentials in transit.",
+      );
+    }
     // Remove trailing slash
     this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.apiKey = apiKey;

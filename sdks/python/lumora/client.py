@@ -72,6 +72,13 @@ class LumoraClient:
             raise ValueError(
                 f"Invalid URL scheme '{parsed.scheme}'. Only 'http' and 'https' are allowed."
             )
+        if api_key and parsed.scheme != "https":
+            import warnings
+            warnings.warn(
+                "API key is being sent over plain HTTP. "
+                "Use HTTPS in production to protect credentials in transit.",
+                stacklevel=2,
+            )
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.timeout = timeout
