@@ -63,9 +63,15 @@ impl VersionedVerifierSet {
     }
 
     /// Remove a circuit version's keys (end of transition).
-    pub fn remove_version(&mut self, version: &CircuitVersion) {
+    ///
+    /// Returns `false` without removing if `version` is the current version.
+    pub fn remove_version(&mut self, version: &CircuitVersion) -> bool {
+        if *version == self.current_version {
+            return false;
+        }
         self.transfer_keys.remove(version);
         self.withdraw_keys.remove(version);
+        true
     }
 
     /// Set the current (preferred) version.
