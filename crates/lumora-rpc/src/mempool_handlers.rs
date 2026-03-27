@@ -7,7 +7,7 @@ use axum::Json;
 use lumora_node::mempool::PendingTx;
 use lumora_contracts::{DepositRequest, TransferRequest, WithdrawRequest};
 
-use crate::handlers::{parse_field, parse_bytes32};
+use crate::handlers::{parse_field, parse_bytes32, decode_proof};
 use crate::types::*;
 
 /// Shared state extended with a mempool.
@@ -52,9 +52,7 @@ pub async fn submit_transfer(
     let nf1 = parse_field(&req.nullifiers[1])?;
     let cm0 = parse_field(&req.output_commitments[0])?;
     let cm1 = parse_field(&req.output_commitments[1])?;
-    let proof_bytes = hex::decode(&req.proof).map_err(|e| {
-        (StatusCode::BAD_REQUEST, Json(ErrorResp { error: format!("invalid proof hex: {e}") }))
-    })?;
+    let proof_bytes = decode_proof(&req.proof)?;
 
     let mut s = state.lock().await;
     let accepted = s.mempool.submit(PendingTx::Transfer(TransferRequest {
@@ -87,10 +85,15 @@ pub async fn submit_withdraw(
     let nf1 = parse_field(&req.nullifiers[1])?;
     let cm0 = parse_field(&req.output_commitments[0])?;
     let cm1 = parse_field(&req.output_commitments[1])?;
-    let proof_bytes = hex::decode(&req.proof).map_err(|e| {
-        (StatusCode::BAD_REQUEST, Json(ErrorResp { error: format!("invalid proof hex: {e}") }))
-    })?;
+    let proof_bytes = decode_proof(&req.proof)?;
     let recipient = parse_bytes32(&req.recipient)?;
+
+    if req.amount == 0 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResp { error: "withdraw amount must be > 0".into() }),
+        ));
+    }
 
     let mut s = state.lock().await;
     let accepted = s.mempool.submit(PendingTx::Withdraw(WithdrawRequest {
