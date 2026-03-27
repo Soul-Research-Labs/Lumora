@@ -49,7 +49,11 @@ pub struct EpochManager {
 
 impl EpochManager {
     /// Create a new epoch manager with the given epoch duration.
+    ///
+    /// # Panics
+    /// Panics if `epoch_duration_secs` is zero.
     pub fn new(epoch_duration_secs: u64) -> Self {
+        assert!(epoch_duration_secs > 0, "epoch duration must be > 0");
         let now = current_unix_secs();
         Self {
             epoch_duration_secs,
