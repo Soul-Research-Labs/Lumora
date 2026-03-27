@@ -174,6 +174,12 @@ impl PrivacyPoolState {
         nullifiers: &[pallas::Base; 2],
         output_commitments: &[pallas::Base; 2],
     ) -> Result<[u64; 2], ContractError> {
+        // Pre-check tree capacity before any mutation to prevent partial
+        // state (nullifiers spent but commitments not inserted).
+        let max_leaves = 1u64 << lumora_tree::DEPTH;
+        if self.commitment_count() + output_commitments.len() as u64 > max_leaves {
+            return Err(ContractError::TreeFull);
+        }
         for nf in nullifiers {
             if !self.spend_nullifier(*nf) {
                 return Err(ContractError::NullifierAlreadySpent);
@@ -196,6 +202,15 @@ impl PrivacyPoolState {
         change_commitments: &[pallas::Base; 2],
         amount: u64,
     ) -> Result<[u64; 2], ContractError> {
+        // Pre-check tree capacity and balance before any mutation to
+        // prevent partial state during WAL/sync replay.
+        let max_leaves = 1u64 << lumora_tree::DEPTH;
+        if self.commitment_count() + change_commitments.len() as u64 > max_leaves {
+            return Err(ContractError::TreeFull);
+        }
+        if amount > self.pool_balance {
+            return Err(ContractError::InsufficientPoolBalance);
+        }
         for nf in nullifiers {
             if !self.spend_nullifier(*nf) {
                 return Err(ContractError::NullifierAlreadySpent);

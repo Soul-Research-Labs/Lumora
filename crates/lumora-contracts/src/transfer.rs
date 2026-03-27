@@ -87,7 +87,15 @@ pub fn execute_transfer(
         }
     }
 
-    // 3. Register nullifiers as spent (AFTER proof verification).
+    // 3. Pre-check tree capacity for all outputs before any mutation.
+    //    This prevents partial state (nullifiers spent, some commitments
+    //    inserted) if the tree fills up mid-insertion.
+    let max_leaves = 1u64 << lumora_tree::DEPTH;
+    if state.commitment_count() + NUM_OUTPUTS as u64 > max_leaves {
+        return Err(ContractError::TreeFull);
+    }
+
+    // 4. Register nullifiers as spent (AFTER proof verification).
     for nf in &request.nullifiers {
         let inserted = state.spend_nullifier(*nf);
         if !inserted {
@@ -95,7 +103,7 @@ pub fn execute_transfer(
         }
     }
 
-    // 4. Insert output commitments into the tree.
+    // 5. Insert output commitments into the tree.
     let mut leaf_indices = [0u64; NUM_OUTPUTS];
     for (i, cm) in request.output_commitments.iter().enumerate() {
         leaf_indices[i] = state.insert_commitment(*cm)?;

@@ -109,7 +109,13 @@ pub fn execute_withdraw(
         }
     }
 
-    // 5. Register nullifiers.
+    // 5. Pre-check tree capacity for all change outputs before any mutation.
+    let max_leaves = 1u64 << lumora_tree::DEPTH;
+    if state.commitment_count() + NUM_OUTPUTS as u64 > max_leaves {
+        return Err(ContractError::TreeFull);
+    }
+
+    // 6. Register nullifiers.
     for nf in &request.nullifiers {
         let inserted = state.spend_nullifier(*nf);
         if !inserted {
@@ -117,13 +123,13 @@ pub fn execute_withdraw(
         }
     }
 
-    // 6. Insert change commitments.
+    // 7. Insert change commitments.
     let mut change_leaf_indices = [0u64; NUM_OUTPUTS];
     for (i, cm) in request.output_commitments.iter().enumerate() {
         change_leaf_indices[i] = state.insert_commitment(*cm)?;
     }
 
-    // 7. Decrease pool balance.
+    // 8. Decrease pool balance.
     state.pool_balance = state.pool_balance.checked_sub(request.amount)
         .ok_or(ContractError::InsufficientPoolBalance)?;
 
