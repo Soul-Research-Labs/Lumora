@@ -128,10 +128,17 @@ impl Challenger {
         }
 
         // Check the claimed result against what the final step implies.
-        // The FinalCheck witness encodes the verification result as a single
-        // byte (1 = verified, 0 = failed) appended after the 32-byte input
-        // state. Using output_hash != [0u8;32] is always true for SHA-256
-        // and therefore cannot distinguish honest from dishonest results.
+        //
+        // KNOWN LIMITATION: The FinalCheck witness encodes the verification
+        // result as a single byte (1 = verified, 0 = failed) appended after
+        // the 32-byte input state. Because `validate_step` only verifies
+        // hash-chain consistency (SHA-256(input || witness || tag) == output),
+        // a dishonest operator can pick an arbitrary witness byte and produce
+        // a valid hash chain that "proves" either outcome. Semantic
+        // verification of the actual proof result would require re-executing
+        // the full Halo 2 verifier inside the Script, which exceeds current
+        // Bitcoin Script limits. The economic security of the operator's bond
+        // is the primary deterrent here.
         let final_step = steps.last().unwrap();
         let expected_result = final_step.kind == StepKind::FinalCheck
             && final_step.witness.last() == Some(&1u8);
