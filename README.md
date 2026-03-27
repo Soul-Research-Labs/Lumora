@@ -1,27 +1,22 @@
 # Lumora
 
-[![CI](https://github.com/lumora/lumora/actions/workflows/ci.yml/badge.svg)](https://github.com/lumora/lumora/actions/workflows/ci.yml)
+[![CI](https://github.com/Soul-Research-Labs/Lumora/actions/workflows/ci.yml/badge.svg)](https://github.com/Soul-Research-Labs/Lumora/actions/workflows/ci.yml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 [![Rust 1.75+](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
+[![Crates](https://img.shields.io/badge/crates-13-green.svg)](#crates)
+[![Tests](https://img.shields.io/badge/tests-350%2B-brightgreen.svg)](#testing--ci)
 
 **Privacy coprocessor for Bitcoin rollups** — zero-knowledge private transfers on [Alpen Labs / Strata](https://alpenlabs.io).
 
 Lumora enables confidential deposits, private transfers, and shielded withdrawals using Halo2 zero-knowledge proofs over the Pallas/Vesta curve cycle. It supports cross-chain privacy through domain-separated nullifiers, stealth addresses, and epoch-based nullifier synchronization.
 
+- **Halo2 IPA** — No trusted setup; proofs over Pallas/Vesta curves
+- **2-in-2-out circuits** — Private transfers and shielded withdrawals (k=13)
+- **BitVM2 bridge** — 14 adapters for optimistic Bitcoin L1 verification
+- **Stealth addresses** — ECDH-based one-time addresses for unlinkable payments
+- **Cross-chain privacy** — Domain-separated nullifiers with epoch-based sync
+
 > **Status**: Pre-1.0 (0.1.x). Core circuits have not undergone a formal audit — do not deploy to mainnet. See [SECURITY.md](SECURITY.md).
-
-### Security Hardening
-
-The codebase has undergone extensive hardening across multiple audit rounds:
-
-- **Atomic state transitions** — All contract operations (deposit, transfer, withdraw) pre-check tree capacity before mutating state, preventing partial writes on failure
-- **Panic-free tree operations** — All Merkle tree insertions use fallible `try_insert()` with proper error propagation
-- **WAL & sync replay safety** — Replay functions validate capacity and balances before mutations; WAL entry size capped at 64 MB to prevent OOM
-- **Rate limiting** — Per-IP rate limiter with trusted-proxy-aware X-Forwarded-For extraction (right-to-left walk)
-- **Batch limits** — Batch verification capped at 2 MB total proof bytes per request
-- **Sync pagination** — `/sync/events` response size bounded to prevent unbounded payloads
-- **Proof validation** — Proof size and zero-amount guards in mempool handlers
-- **BitVM protocol safety** — Step-kind validation on dispute responses, `saturating_add` for all deadline arithmetic, assertion invariant enforcement
 
 ---
 
@@ -114,7 +109,7 @@ The codebase has undergone extensive hardening across multiple audit rounds:
 | `lumora-sdk`        | High-level `Lumora` orchestrator + serialization helpers                                                                           |
 | `lumora-rpc`        | Axum HTTP server, relay jitter middleware, proof envelope unwrap, epoch-roots endpoint                                             |
 | `lumora-cli`        | Interactive CLI (`lumora run`)                                                                                                     |
-| `lumora-bitvm`      | BitVM2 bridge: operator, challenger, optimistic verification, 14 adapters (13 Bitcoin L2/sidechain + EMVCo QR [ALPHA])              |
+| `lumora-bitvm`      | BitVM2 bridge: operator, challenger, optimistic verification, 14 adapters (13 Bitcoin L2 + EMVCo QR [ALPHA])                       |
 
 ## Quick Start
 
@@ -247,7 +242,7 @@ See [docs/typescript-sdk.md](docs/typescript-sdk.md) for the complete API refere
 ### Guides
 
 - [docs/getting-started.md](docs/getting-started.md) — Installation, first deposit, SDK and CLI quickstart
-- [docs/api-guide.md](docs/api-guide.md) — Complete RPC API reference (17 endpoints)
+- [docs/api-guide.md](docs/api-guide.md) — Complete RPC API reference (15 endpoints)
 - [docs/typescript-sdk.md](docs/typescript-sdk.md) — TypeScript SDK setup, API reference, and examples
 - [docs/architecture.md](docs/architecture.md) — System architecture, data flow, and component responsibilities
 - [docs/cross-chain-privacy.md](docs/cross-chain-privacy.md) — Domain-separated nullifiers, epochs, and cross-chain sync
@@ -272,10 +267,10 @@ See [docs/typescript-sdk.md](docs/typescript-sdk.md) for the complete API refere
 
 ### Project
 
-- [CHANGELOG.md](CHANGELOG.md) — Complete changelog (Phases 1–36)
+- [CHANGELOG.md](CHANGELOG.md) — Complete changelog (Phases 1–29)
 - [CONTRIBUTING.md](CONTRIBUTING.md) — Contributing guidelines and development workflow
 - [VERSIONING.md](VERSIONING.md) — Semantic versioning policy
-- [docs/adr/](docs/adr/) — Architecture Decision Records (7 decisions)
+- [docs/adr/](docs/adr/) — Architecture Decision Records (6 decisions)
 
 ## Key Features
 
@@ -291,21 +286,20 @@ See [docs/typescript-sdk.md](docs/typescript-sdk.md) for the complete API refere
 - **WAL + snapshots** — Write-ahead logging with periodic snapshots for crash recovery; WAL files written with `0o600` permissions on Unix
 - **Per-IP rate limiting** — `IpRateLimiter` enforces 60 req/min per IP with `X-Forwarded-For` awareness
 - **Wallet management** — Multi-wallet manager with BIP-39 mnemonic creation/recovery, encrypted backup/restore (AES-256-GCM + Argon2)
-- **TypeScript SDK** — Full HTTP client (`@lumora/sdk`) with 17 endpoint methods, stealth scanning, epoch root queries, and domain field support
+- **TypeScript SDK** — Full HTTP client (`@lumora/sdk`) with 15 endpoint methods, stealth scanning, epoch root queries, and domain field support
 - **Domain-separated nullifiers** — V2 nullifiers include `(chain_id, app_id)` for cross-chain isolation; backward-compatible V1 path preserved
 - **Stealth addresses** — ECDH-based one-time stealth addresses; sender creates via `stealth_send()`, recipient detects via `stealth_receive()`
 - **Metadata resistance** — Fixed-size 2048-byte proof envelopes, transaction batch accumulator with dummy padding, relay jitter middleware
 - **Epoch nullifier partitioning** — `EpochManager` partitions nullifiers into time-bounded epochs with Merkle root finalization
 - **Cross-chain nullifier sync** — `RollupBridge` publishes per-epoch nullifier roots and fetches roots from remote chains
 - **BitVM2 bridge** — Optimistic Bitcoin L1 verification via `BitvmBridge`; operator/challenger protocol with bonded assertions, challenge-response, and timeout-based finality; 14 adapters (13 Bitcoin L2/sidechain + EMVCo QR payment rail [ALPHA])
-- **Hardened state machine** — All contract operations guard mutations with capacity/balance pre-checks; panic-free tree operations; WAL entry caps; replay atomicity
 
 ## Testing & CI
 
-**350+ Rust lib tests · 24 integration/E2E tests · 30 TypeScript tests · 24 Python tests · 11 fuzz targets**
+**346 Rust lib tests · 24 integration/E2E tests · 30 TypeScript tests · 24 Python tests · 6 fuzz targets**
 
 ```bash
-# Unit + integration tests (350+ lib tests across 13 crates)
+# Unit + integration tests (346 lib tests across 12 crates)
 cargo test --lib -- --test-threads=1
 
 # RPC endpoint tests (36 lib + 12 E2E)
@@ -324,18 +318,11 @@ cd sdks/python && python -m pytest
 cargo test -p lumora-contracts proptest
 cargo test -p lumora-primitives -- proptests
 
-# Fuzz testing (requires cargo-fuzz, 11 targets)
+# Fuzz testing (requires cargo-fuzz)
 cargo fuzz run envelope -- -max_total_time=60
 cargo fuzz run field_parse -- -max_total_time=60
 cargo fuzz run transfer_json -- -max_total_time=60
 cargo fuzz run wal_entry -- -max_total_time=60
-cargo fuzz run bitvm_protocol -- -max_total_time=60
-cargo fuzz run bitvm_merkle -- -max_total_time=60
-cargo fuzz run bitvm_trace_step -- -max_total_time=60
-cargo fuzz run bitvm_adapter_parse -- -max_total_time=60
-cargo fuzz run poseidon_merkle -- -max_total_time=60
-cargo fuzz run pedersen_commit -- -max_total_time=60
-cargo fuzz run emv_deposit_parse -- -max_total_time=60
 
 # Nullifier migration (V1 → V2)
 cargo run -p lumora-cli -- migrate-nullifiers --wallet wallet.json --chain-id 1 --app-id 42 --dry-run
@@ -350,7 +337,7 @@ GitHub Actions CI runs: lint/fmt check, full test suite, `cargo deny`, `cargo au
 
 ```
 lumora/
-├── Cargo.toml                # Workspace root (13 crates)
+├── Cargo.toml                # Workspace root (12 crates)
 ├── crates/
 │   ├── lumora-primitives/     # Field types, Poseidon, Pedersen, proof envelopes
 │   ├── lumora-note/           # Note model, keys, ECIES, stealth addresses
@@ -367,12 +354,12 @@ lumora/
 │   └── lumora-cli/            # Interactive CLI binary
 ├── sdks/
 │   ├── typescript/            # @lumora/sdk — TypeScript HTTP client
-│   └── python/                # lumora-sdk — Python client (24 tests)
+│   └── python/                # lumora-sdk — Python client (20 tests)
 ├── docs/                      # Guides, specs, and ADRs
 ├── deploy/helm/               # Kubernetes Helm chart
 ├── benches/                   # Criterion benchmarks
 ├── tests/                     # Cross-crate integration tests
-├── fuzz/                      # cargo-fuzz targets (11 fuzz harnesses)
+├── fuzz/                      # cargo-fuzz targets (6 fuzz harnesses)
 ├── .github/
 │   ├── workflows/ci.yml       # GitHub Actions CI
 │   ├── workflows/release.yml  # Tag-triggered release workflow
