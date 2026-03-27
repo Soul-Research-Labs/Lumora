@@ -21,6 +21,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::trace::{StepKind, VerificationTrace};
 
+/// Number of blocks the operator has to respond after a challenge is filed.
+const RESPONSE_WINDOW_BLOCKS: u64 = 10;
+
 // ---------------------------------------------------------------------------
 // Assertion — operator's on-chain claim
 // ---------------------------------------------------------------------------
@@ -225,8 +228,8 @@ impl ProtocolManager {
                 }
                 *state = AssertionState::Challenged {
                     disputed_step: challenge.disputed_step,
-                    // Bug #20: operator must respond within the same timeout window.
-                    response_deadline: *timeout_height,
+                    // Give the operator a window to respond after the challenge.
+                    response_deadline: *timeout_height + RESPONSE_WINDOW_BLOCKS,
                 };
                 Ok(())
             }
