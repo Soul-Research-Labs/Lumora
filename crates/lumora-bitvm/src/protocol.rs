@@ -134,6 +134,14 @@ pub struct ChallengeResponse {
     pub merkle_proof: Vec<[u8; 32]>,
 }
 
+/// Maximum allowed witness size in bytes (1 MiB).
+///
+/// This prevents memory exhaustion from oversized challenge responses.
+pub const MAX_WITNESS_SIZE: usize = 1 << 20;
+
+/// Maximum Merkle proof depth (matching typical trace tree heights).
+pub const MAX_MERKLE_PROOF_DEPTH: usize = 64;
+
 // ---------------------------------------------------------------------------
 // Protocol state machine
 // ---------------------------------------------------------------------------
@@ -237,6 +245,20 @@ impl ProtocolManager {
         &mut self,
         response: &ChallengeResponse,
     ) -> Result<(), ProtocolError> {
+        // Validate witness and proof sizes to prevent memory exhaustion.
+        if response.witness.len() > MAX_WITNESS_SIZE {
+            return Err(ProtocolError::InvalidStateTransition(
+                format!("witness size {} exceeds max {MAX_WITNESS_SIZE}", response.witness.len()),
+                "Responded".into(),
+            ));
+        }
+        if response.merkle_proof.len() > MAX_MERKLE_PROOF_DEPTH {
+            return Err(ProtocolError::InvalidStateTransition(
+                format!("merkle proof depth {} exceeds max {MAX_MERKLE_PROOF_DEPTH}", response.merkle_proof.len()),
+                "Responded".into(),
+            ));
+        }
+
         let (_assertion, state) = self
             .assertions
             .get_mut(&response.assertion_id)
