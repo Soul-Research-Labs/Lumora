@@ -40,8 +40,10 @@ pub async fn sync_events(
     // Events are recorded in order; we approximate by skipping the first
     // `from_height` events (each deposit/transfer/withdraw increments height).
     let from = req.from_height as usize;
+    const MAX_SYNC_EVENTS: usize = 1000;
     let events = if from < all_events.len() {
-        all_events[from..].to_vec()
+        let end = (from + MAX_SYNC_EVENTS).min(all_events.len());
+        all_events[from..end].to_vec()
     } else {
         vec![]
     };
