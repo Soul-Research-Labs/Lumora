@@ -197,6 +197,12 @@ paths:
           description: Note stored
         "400":
           $ref: "#/components/responses/BadRequest"
+        "507":
+          description: Note store is full or note is a duplicate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResp"
 
   /v1/history:
     post:

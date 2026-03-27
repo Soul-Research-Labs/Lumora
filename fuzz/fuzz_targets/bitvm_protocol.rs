@@ -71,7 +71,8 @@ fuzz_target!(|data: &[u8]| {
                 let challenge = lumora_bitvm::protocol::Challenge {
                     assertion_id: assertion.id.clone(),
                     disputed_step: step,
-                    challenger_bond_sats: 5_000_000,
+                    expected_output_hash: [0u8; 32],
+                    challenge_height: 150,
                 };
                 let _ = mgr.process_challenge(&challenge);
             }
