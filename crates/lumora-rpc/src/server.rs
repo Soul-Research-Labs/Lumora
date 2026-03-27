@@ -215,7 +215,7 @@ fn router_with_state(state: AppState) -> Router {
                                 req.headers()
                                     .get("x-forwarded-for")
                                     .and_then(|v| v.to_str().ok())
-                                    .and_then(|s| s.split(',').next())
+                                    .and_then(|s| s.split(',').next_back())
                                     .and_then(|s| s.trim().parse().ok())
                             } else {
                                 None
