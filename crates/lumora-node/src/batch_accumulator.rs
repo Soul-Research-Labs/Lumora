@@ -147,14 +147,21 @@ impl BatchAccumulator {
 
     /// Pad the current batch with dummy transactions to reach `min_batch_size`.
     ///
-    /// Dummy values are derived from a domain-separated hash so they are
-    /// deterministic but indistinguishable from real transactions to an
-    /// observer who doesn't know the batch index or padding slot.
+    /// Dummy values include OS randomness so they are unique per batch, preventing
+    /// node fingerprinting via deterministic padding patterns.
     fn pad_to_min_size(&mut self) {
         use ff::PrimeField;
         use lumora_primitives::poseidon;
 
-        let batch_nonce = pallas::Base::from(self.pending.len() as u64);
+        // Mix OS randomness into the nonce so padding is unique across batches.
+        let mut rng_seed = [0u8; 32];
+        rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut rng_seed);
+        let random_base = pallas::Base::from_repr(rng_seed)
+            .unwrap_or_else(|| pallas::Base::from(u64::from_le_bytes(rng_seed[..8].try_into().unwrap())));
+        let batch_nonce = poseidon::hash_two(
+            pallas::Base::from(self.pending.len() as u64),
+            random_base,
+        );
         let mut slot = 0u64;
         while self.pending.len() < self.config.min_batch_size {
             let domain = pallas::Base::from(slot);
