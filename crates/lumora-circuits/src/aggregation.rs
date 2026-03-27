@@ -49,9 +49,15 @@ impl AggregationBundle {
     }
 
     /// Add a proof to the bundle, updating the Blake2b digest.
-    pub fn push(&mut self, proof: SerializedProof) {
+    /// Returns `false` if the proof is a duplicate (already in the bundle).
+    pub fn push(&mut self, proof: SerializedProof) -> bool {
+        // Reject duplicate proofs — same proof bytes must not be counted twice.
+        if self.proofs.iter().any(|p| p.bytes == proof.bytes) {
+            return false;
+        }
         self.proofs.push(proof);
         self.recompute_digest();
+        true
     }
 
     pub fn len(&self) -> usize {
