@@ -95,8 +95,9 @@ pub fn execute_transfer(
     // 4. Register nullifiers as spent (AFTER proof verification).
     for nf in &request.nullifiers {
         let inserted = state.spend_nullifier(*nf);
-        // This should always succeed since we checked above, but defense in depth.
-        assert!(inserted, "nullifier was not spent despite passing check");
+        if !inserted {
+            return Err(ContractError::NullifierAlreadySpent);
+        }
     }
 
     // 5. Insert output commitments into the tree.

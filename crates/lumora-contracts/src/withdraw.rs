@@ -112,7 +112,9 @@ pub fn execute_withdraw(
     // 5. Register nullifiers.
     for nf in &request.nullifiers {
         let inserted = state.spend_nullifier(*nf);
-        assert!(inserted, "nullifier was not spent despite passing check");
+        if !inserted {
+            return Err(ContractError::NullifierAlreadySpent);
+        }
     }
 
     // 6. Insert change commitments.
