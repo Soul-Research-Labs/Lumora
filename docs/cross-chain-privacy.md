@@ -27,16 +27,19 @@ every chain. This is vulnerable to cross-chain replay and linkability.
 
 ### V2 Nullifier (current)
 
-$$\text{nf}_{v2} = H_{\text{Poseidon}}(\text{domain\_tag} \| \text{spending\_key} \| \text{commitment})$$
+The V2 nullifier uses nested Poseidon hashing for domain separation:
 
-The **domain tag** is a 32-byte value derived from the chain configuration:
-
-$$\text{domain\_tag} = \text{SHA-256}(\text{"lumora-nullifier-v2"} \| \text{chain\_id} \| \text{app\_id})$$
+$$\text{nf}_{v2} = H_{\text{Poseidon}}\bigl(H_{\text{Poseidon}}(\text{sk}, \text{cm}),\; H_{\text{Poseidon}}(\text{chain\_id}, \text{app\_id})\bigr)$$
 
 Where:
 
-- `chain_id` — Unique identifier for the chain/rollup (e.g., `1` for Strata mainnet).
-- `app_id` — Application identifier within the chain (default: `0`).
+- `sk` — The spending key scalar, converted to the Pallas base field.
+- `cm` — The note commitment.
+- `chain_id` — Unique identifier for the chain/rollup (e.g., `1` for Strata mainnet), as a field element.
+- `app_id` — Application identifier within the chain (default: `0`), as a field element.
+
+This is equivalent to `poseidon::hash_four(sk, cm, chain_id, app_id)` which
+internally computes `hash_two(hash_two(sk, cm), hash_two(chain_id, app_id))`.
 
 ### Properties
 
@@ -45,8 +48,8 @@ Where:
 | Cross-chain replay safe | No           | Yes                                |
 | Cross-chain unlinkable  | No           | Yes                                |
 | Backward compatible     | —            | Yes (V1 coexists during migration) |
-| Hash inputs             | 2            | 3                                  |
-| Circuit constraints     | Same         | +1 Poseidon (domain tag)           |
+| Hash inputs             | 2            | 4 (nested Poseidon)                |
+| Circuit constraints     | Same         | +2 Poseidon hashes                 |
 
 ### SDK Support
 

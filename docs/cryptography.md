@@ -59,13 +59,12 @@ for SHA-256.
 
 ## Domain-Separated Nullifiers (V2)
 
-V2 nullifiers include a **domain tag** that binds the nullifier to a specific chain/rollup:
+V2 nullifiers use nested Poseidon hashing for domain separation:
 
-$$\text{nf}_{v2} = H(\text{domain\_tag} \| \text{spending\_key} \| \text{commitment})$$
+$$\text{nf}_{v2} = H_{\text{Poseidon}}\bigl(H_{\text{Poseidon}}(\text{sk}, \text{cm}),\; H_{\text{Poseidon}}(\text{chain\_id}, \text{app\_id})\bigr)$$
 
-The domain tag is a 32-byte identifier derived from the chain configuration:
-
-$$\text{domain\_tag} = \text{SHA-256}(\text{"lumora-nullifier-v2"} \| \text{chain\_id})$$
+This is equivalent to `poseidon::hash_four(sk, cm, chain_id, app_id)`. Both
+`chain_id` and `app_id` are converted to Pallas base field elements.
 
 ### Benefits
 
