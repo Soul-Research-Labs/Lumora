@@ -87,7 +87,7 @@ hmac = "0.12"
 sha2 = "0.10"
 
 # CLI UX
-rpassword = "5"
+rpassword = "7"
 
 # Observability
 metrics = "0.24"
