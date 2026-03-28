@@ -1278,7 +1278,7 @@ dependencies = [
  "lumora-tree",
  "pasta_curves",
  "rand 0.8.5",
- "rand_core 0.6.4",
+ "rand_core 0.9.5",
  "serde",
 ]
 
@@ -1378,7 +1378,7 @@ dependencies = [
  "pasta_curves",
  "proptest",
  "rand 0.8.5",
- "rand_core 0.6.4",
+ "rand_core 0.9.5",
  "serde",
  "serde_json",
  "sha2",
@@ -1397,7 +1397,7 @@ dependencies = [
  "pasta_curves",
  "proptest",
  "rand 0.8.5",
- "rand_core 0.6.4",
+ "rand_core 0.9.5",
  "serde",
 ]
 
@@ -1415,7 +1415,7 @@ dependencies = [
  "lumora-tree",
  "pasta_curves",
  "rand 0.8.5",
- "rand_core 0.6.4",
+ "rand_core 0.9.5",
  "rayon",
  "tokio",
 ]
